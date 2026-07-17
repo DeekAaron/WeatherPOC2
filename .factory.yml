@@ -5,5 +5,5 @@
 # (never a silent GitHub default, bug #343). Per-coordinate charset (bug #95684): org is
 # [A-Za-z0-9-] (alnum-bounded, no spaces); project additionally allows internal spaces and dots.
 ado:
-  org: Enate
-  project: Davids Weather PoC
+  org: EnateInternal
+  project: DCWeatherApp2
