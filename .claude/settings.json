@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "enate-skills": {
+      "source": { "source": "github", "repo": "kitcox-dev/enate-claude-skills" }
+    }
+  },
+  "enabledPlugins": {
+    "enate-sdlc-factory@enate-skills": true
+  }
+}
