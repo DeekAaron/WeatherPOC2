@@ -30,6 +30,8 @@ Authority order (lower wins): **ADR > Technical-Context > Context.MD > PRD > Roa
 - **`Technical-Context.MD`** — the engineering contract every code-writing agent must respect
   (principles, secure-coding baseline, branching, and the **Testing & the ratchet** standard).
 - **`Context.MD`** — the domain glossary (the project's language).
+- **`docs/project-brief.md`** — the original inbound product brief (source material the PRD
+  is built from; not an authority — Context.MD and PRD.md win where they diverge).
 - **`PRD.md`** · **`Roadmap.md`** — product requirements; the ordered Feature list.
 - **`docs/adr/`** — architectural decisions (highest authority).
 - **`docs/superpowers/specs/`** · **`plans/`** — per-Feature Spec and Plan (the Plan carries
