@@ -10,6 +10,8 @@ Features are listed in delivery order. Each Feature gets its own `/brainstorming
 
 ## Feature 1: Current Temperature for a fixed Location 🔫 *tracer bullet*
 
+**Status:** **Published to ADO** — Feature [#33](https://dev.azure.com/EnateInternal/DCWeatherApp2/_workitems/edit/33), 2026-07-21.
+
 The app launches, fetches weather from Open-Meteo for a single hard-coded Location, and displays
 the current **Temperature** in canonical °C. If the fetch fails, it shows a friendly in-app error
 instead of a number. This Feature also stands up the whole substrate the rest of the build assumes:
