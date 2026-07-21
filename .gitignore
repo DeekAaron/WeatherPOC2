@@ -1,0 +1,30 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Environment / local secrets
+.env
+.env.*
+*.local
+
+# Build output
+dist/
+build/
+out/
+
+# AFK orchestrator run artifacts — never commit
+.orchestrator/
+
+# ADO mode (.factory.yml declares `ado:`): Spec/Plan docs are transient local
+# artifacts written by /brainstorming and /writing-plans. /publish-feature
+# pushes their exact contents into the ADO Feature's Description and
+# Implementation Plan fields — ADO, not git, is the durable copy on this repo.
+# Ignored (not just left untracked) so generic git-hygiene tooling doesn't
+# flag them as forgotten uncommitted work.
+docs/superpowers/specs/
+docs/superpowers/plans/
