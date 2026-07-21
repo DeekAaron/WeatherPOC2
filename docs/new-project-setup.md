@@ -375,7 +375,7 @@ You now have a Factory-ready product. From here you're into the **HITL → AFK**
 one hard rule of which is that **only a human moves a Story to `Agent Ready`** (the HITL → AFK
 handoff); the orchestrator owns every other transition. Typical next moves:
 
-- `/init-context` — write the domain glossary (`business-domain-context.md`).
+- `/init-context` — write the domain glossary (`Context.MD`).
 - `/roadmap` — break the PRD into an ordered Feature list.
 
 See **[Using the Enate SDLC Factory](https://github.com/kitcox-dev/enate-claude-skills/blob/main/docs/using-the-sdlc-factory.md)**
