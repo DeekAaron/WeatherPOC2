@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:WeatherPoc2.Core.ViewModels;assembly=WeatherPoc2.Core"
+             x:Class="WeatherPoc2.App.Views.CurrentConditionsPage"
+             x:DataType="vm:CurrentConditionsViewModel"
+             Title="Weather">
+    <VerticalStackLayout Padding="24" Spacing="16" VerticalOptions="Center" HorizontalOptions="Center">
+        <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" />
+        <Label Text="{Binding TemperatureDisplay}" FontSize="48" HorizontalOptions="Center" />
+        <Label Text="{Binding ErrorMessage}" TextColor="Red" HorizontalOptions="Center" />
+    </VerticalStackLayout>
+</ContentPage>
