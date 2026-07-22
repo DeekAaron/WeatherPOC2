@@ -31,6 +31,9 @@
          (warning MA002). Without this the Windows build fails (e.g. ILoggingBuilder.AddDebug missing).
          Surfaced by the HITL platform-verification story (#38). -->
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
+    <!-- Provides ILoggingBuilder.AddDebug() used by MauiProgram under #if DEBUG. Not pulled in
+         transitively by Microsoft.Maui.Controls; pinned to the repo-wide 10.0.0 line. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
