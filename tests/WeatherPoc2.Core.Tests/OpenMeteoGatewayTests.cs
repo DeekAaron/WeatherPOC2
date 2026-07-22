@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using WeatherPoc2.Core.Tests.Support;
@@ -13,10 +14,13 @@ public class OpenMeteoGatewayTests
         => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name));
 
     private static OpenMeteoGateway GatewayWith(HttpMessageHandler handler)
+        => GatewayWith(handler, NullLogger<OpenMeteoGateway>.Instance);
+
+    private static OpenMeteoGateway GatewayWith(HttpMessageHandler handler, ILogger<OpenMeteoGateway> logger)
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(handler));
-        return new OpenMeteoGateway(factory, NullLogger<OpenMeteoGateway>.Instance);
+        return new OpenMeteoGateway(factory, logger);
     }
 
     [Fact]
@@ -45,6 +49,29 @@ public class OpenMeteoGatewayTests
         Assert.NotNull(requestUrl);
         Assert.Contains("current=temperature_2m", requestUrl);
         Assert.Contains("temperature_unit=celsius", requestUrl);
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_logs_the_endpoint_and_outcome_for_Current_Conditions()
+    {
+        // AC #7: the Instrumentation contract requires the Gateway to log the endpoint (URL) on the
+        // request line and the endpoint (URL) + outcome (status) on every outcome line, via
+        // ILogger<OpenMeteoGateway>. Assert both lines are emitted with the endpoint present.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-temperature-london-200.json"));
+        var logger = new CapturingLogger<OpenMeteoGateway>();
+        var gateway = GatewayWith(handler, logger);
+
+        await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        const string endpoint = "https://api.open-meteo.com/v1/forecast";
+
+        var requestLine = Assert.Single(logger.Messages, m => m.Contains(endpoint) && m.Contains("requesting"));
+        Assert.Contains(Location.LondonGb.Label, requestLine);
+
+        var outcomeLine = Assert.Single(
+            logger.Messages,
+            m => m.Contains(endpoint) && m.Contains(((int)HttpStatusCode.OK).ToString()));
+        Assert.Contains(Location.LondonGb.Label, outcomeLine);
     }
 
     [Fact]
