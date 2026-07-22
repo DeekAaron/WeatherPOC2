@@ -13,6 +13,11 @@
     <ApplicationVersion>1</ApplicationVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+    <!-- Build the Windows head unpackaged (plain .exe, launched via `dotnet build -t:Run`): the app
+         carries no Platforms/Windows AppxManifest, so without this the WindowsAppSDK build fails with
+         "no AppxManifest is specified, but WindowsPackageType is not set to MSIX". Surfaced by the
+         HITL platform-verification story (#38) — the Linux AFK runner cannot build this head. -->
+    <WindowsPackageType Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">None</WindowsPackageType>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\WeatherPoc2.Core\WeatherPoc2.Core.csproj" />

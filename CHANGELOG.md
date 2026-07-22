@@ -20,6 +20,14 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
   ≤ 5 live calls per scheduled run, once per day — Open-Meteo is free and keyless, so the ceiling is
   call-volume, not money.
 
+### Fixed
+- `WeatherPoc2.App` Windows head now builds unpackaged: added
+  `<WindowsPackageType>None</WindowsPackageType>` (Windows-conditioned) to `WeatherPoc2.App.csproj`.
+  The app carries no `Platforms/Windows` AppxManifest, so the Windows build previously failed with
+  *"no AppxManifest is specified, but WindowsPackageType is not set to MSIX."* Surfaced by the HITL
+  platform-verification story (#38) — the Linux AFK runner cannot build either desktop head, so this
+  config gap could only be caught by a human building on Windows.
+
 ### Decisions
 - No pipeline or schedule wiring is included — explicitly out of scope for this story and this
   Feature per the Plan. The trait is what makes the per-commit/scheduled split possible; the actual
