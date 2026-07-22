@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-maccatalyst</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationTitle>WeatherPoc2</ApplicationTitle>
+    <ApplicationId>net.enate.weatherpoc2</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+    <!-- Build the Windows head unpackaged (plain .exe, launched via `dotnet build -t:Run`): the app
+         carries no Platforms/Windows AppxManifest, so without this the WindowsAppSDK build fails with
+         "no AppxManifest is specified, but WindowsPackageType is not set to MSIX". Surfaced by the
+         HITL platform-verification story (#38) — the Linux AFK runner cannot build this head. -->
+    <WindowsPackageType Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">None</WindowsPackageType>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- App icon and splash. MAUI requires an app icon (the MacCatalyst Info.plist's
+         XSAppIconAssets resolves to the catalog resizetizer generates from this). -->
+    <MauiIcon Include="Resources/AppIcon/appicon.svg" ForegroundFile="Resources/AppIcon/appiconfg.svg" Color="#512BD4" />
+    <MauiSplashScreen Include="Resources/Splash/splash.svg" Color="#512BD4" BaseSize="128,128" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Explicit since .NET 8: UseMaui no longer implicitly references the MAUI NuGet packages
+         (warning MA002). Without this the Windows build fails (e.g. ILoggingBuilder.AddDebug missing).
+         Surfaced by the HITL platform-verification story (#38). -->
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
+    <!-- Provides ILoggingBuilder.AddDebug() used by MauiProgram under #if DEBUG. Not pulled in
+         transitively by Microsoft.Maui.Controls; pinned to the repo-wide 10.0.0 line. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WeatherPoc2.Core\WeatherPoc2.Core.csproj" />
+  </ItemGroup>
+</Project>

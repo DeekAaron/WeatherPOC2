@@ -1,14 +1,10 @@
 ## What to build
 
-The walking skeleton of the testable Core: pin the SDK (`global.json`: `10.0.100`, `rollForward: latestFeature`), create the solution with the `WeatherPoc2.Core` class library (`net10.0`) and the `WeatherPoc2.Core.Tests` xUnit project, add the domain records, and stand up the Open-Meteo Gateway seam's happy path end-to-end: a captured real Open-Meteo 200 body flows through real file I/O and real `System.Text.Json` into a `WeatherBundle` carrying London's current Temperature in canonical °C.
+The Tier-2 live drift guard: a trait-gated xUnit test (`[Trait("Tier", "2-Live")]`) that makes one real call to `api.open-meteo.com/v1/forecast` for `Location.LondonGb` through the real `OpenMeteoGateway` and asserts a `WeatherBundle` comes back within a sanity band (−60…60). The assertion is **unit-aware by construction**: the Gateway throws `WeatherUnavailableException` unless `current_units.temperature_2m == "°C"`, so a returned bundle proves the live response is in Celsius — a server-side unit-default change fails the test rather than passing a loose plausibility band. This is the ratchet's guard against fixture drift at the Open-Meteo seam.
 
-- `Location` is a resolved place per `Context.MD` (coordinates + label + `OpenMeteoId`, null until geocoding mints it in Feature 3); Feature 1 exposes the single hard-coded constant `Location.LondonGb` (51.5074, −0.1278, "London, GB").
-- `OpenMeteoGateway.GetWeatherAsync` builds the `/v1/forecast` request with `&temperature_unit=celsius` **explicitly**, deserializes with `System.Text.Json` including the `current_units` DTO (the unit *assertion* branch lands with the failure-paths story, TDD ordering), maps `current.temperature_2m` → `WeatherBundle.CurrentTemperatureCelsius`, and logs endpoint (URL) + outcome via `ILogger<OpenMeteoGateway>` (Technical-Context Instrumentation contract).
-- The recorded-replay test fakes only the HTTP transport (stub `HttpMessageHandler`); the fixture is read from the test output directory via `CopyToOutputDirectory` — the Seam 2 build/emit contract.
+The trait is what splits the runs: `dotnet test --filter "Tier!=2-Live"` is the per-commit command (no network dependency); `--filter "Tier=2-Live"` is the scheduled (daily) job. Cost ceiling: ≤ 5 live calls per scheduled run, once per day — Open-Meteo is free and keyless, so the ceiling is call-volume, not money.
 
-Covers Plan Tasks 1 (Core + Tests portions), 2, and 4. The MAUI app-head project of Task 1 is deliberately **not** in this story — it is added by the app-head story, because MAUI workloads do not restore on the Linux AFK runner.
-
-**Known-issues carried from the feature-doc-gauntlet:** A2 — this is the first story to touch the scaffold, so its **first proof** is `dotnet restore` / `build` / `test` green on a .NET-10-SDK runner (the pinned package versions are pinned-but-unverified until that live restore). A7 (informational) — the committed happy-path fixture (`23.3` @ 14:15) and the Spec's Seam-1 (e) re-grounding quote (`23.8` @ 15:00) are two different valid same-day live captures, not a contradiction.
+Covers Plan Task 9. Wiring the actual schedule into an Azure DevOps pipeline is a pipeline concern **outside this story** (and outside this Feature's code, per the Plan) — the trait makes the split possible; the schedule lands with the Feature's CI setup.
 ## Context references
 
 The docs the AFK Developer Agent must load before implementing this story — carried through from the Plan. Every one is a file in the checkout the Developer Agent already has; it loads them from disk and never queries the tracker:
@@ -23,14 +19,10 @@ The docs the AFK Developer Agent must load before implementing this story — ca
 
 ## Acceptance criteria (ADO Acceptance Criteria field — authoritative)
 
-- [ ] First proof (gauntlet advisory A2): `dotnet restore`, `dotnet build`, and `dotnet test` run green on a .NET-10-SDK runner, confirming the pinned package versions against a live restore.
-- [ ] `global.json` pins `sdk.version` `10.0.100` with `rollForward: latestFeature`; `WeatherPoc2.sln` contains `WeatherPoc2.Core` and `WeatherPoc2.Core.Tests` per Plan Task 1 (the App head project is added by the app-head story).
-- [ ] `Location` record with `Location.LondonGb` — latitude 51.5074, longitude −0.1278, label "London, GB", `OpenMeteoId` null — proven by `LocationTests`.
-- [ ] `WeatherBundle` record carries `CurrentTemperatureCelsius` (canonical °C per ADR-0001); no unit conversion anywhere (that is Feature 5).
-- [ ] `IWeatherGateway` / `OpenMeteoGateway` exist with the full-shape signature `GetWeatherAsync(Location, CancellationToken)`; the request URL includes `&temperature_unit=celsius` explicitly; the `current_units` DTO is deserialized.
-- [ ] Recorded-replay happy-path test green: the live-captured `current-temperature-london-200.json` fixture, read via real file I/O from the test output directory (`CopyToOutputDirectory` — Seam 2), through real `System.Text.Json` → `CurrentTemperatureCelsius == 23.3`.
-- [ ] The Gateway logs endpoint (URL) + outcome via `ILogger<OpenMeteoGateway>` on the request line and every outcome line (Technical-Context Instrumentation contract).
-- [ ] No persistence code (Req 52); all I/O is async — no `.Result`, no `.Wait()` (Technical-Context).
+- [ ] `LiveOpenMeteoTests` exists with `[Trait("Tier", "2-Live")]`; its comments record the cost ceiling (≤ 5 live calls per scheduled run, once per day).
+- [ ] `dotnet test --filter "Tier!=2-Live"` runs every Tier-1 test and skips the live test — no network dependency on the per-commit run.
+- [ ] `dotnet test --filter "Tier=2-Live"` passes against the real endpoint: the returned bundle proves the °C unit on the wire (the Gateway's unit assertion), with the −60…60 sanity band on top.
+- [ ] No pipeline or schedule wiring is included — explicitly out of scope per the Plan.
 
 ## Plan and Spec (orchestrator-projected — authoritative for this Run)
 

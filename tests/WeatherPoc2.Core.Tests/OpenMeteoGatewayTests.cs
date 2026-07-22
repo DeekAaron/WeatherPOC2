@@ -23,6 +23,20 @@ public class OpenMeteoGatewayTests
         return new OpenMeteoGateway(factory, logger);
     }
 
+    // A Gateway whose HttpClient caps the buffered response body at 1 MiB (1,048,576 bytes) — the
+    // same cap the production named client carries. Constructing HttpClient directly around the stub
+    // handler is sanctioned test idiom (known-issue A5); the IHttpClientFactory rule is a production
+    // constraint, and the ViewModel + DI story wires the identical cap on the named client.
+    private const long OneMebibyte = 1_048_576;
+
+    private static OpenMeteoGateway GatewayWithCappedClient(HttpMessageHandler handler)
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>())
+               .Returns(_ => new HttpClient(handler) { MaxResponseContentBufferSize = OneMebibyte });
+        return new OpenMeteoGateway(factory, NullLogger<OpenMeteoGateway>.Instance);
+    }
+
     [Fact]
     public async Task GetWeatherAsync_maps_current_temperature_from_a_200_body()
     {
@@ -92,6 +106,105 @@ public class OpenMeteoGatewayTests
     {
         // temperature_2m present but not a number must also convert to the typed failure.
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, "{\"current\":{\"temperature_2m\":\"n/a\"}}");
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_converts_a_transport_failure_to_WeatherUnavailableException()
+    {
+        // A network/DNS failure surfaces as HttpRequestException on the transport call; the Gateway
+        // must convert it into the single typed failure the app layer catches (fail-visible).
+        var handler = new StubHttpMessageHandler(new HttpRequestException("network down"));
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_converts_a_request_timeout_to_WeatherUnavailableException()
+    {
+        // Security AC: a request-timeout expiry surfaces as TaskCanceledException — the timeout half
+        // of the fail-closed promise. It must convert to WeatherUnavailableException, not hang or
+        // escape untyped, so a slow/cancelled Open-Meteo response never stalls the load.
+        var handler = new StubHttpMessageHandler(new TaskCanceledException("timed out"));
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_converts_an_oversized_response_to_WeatherUnavailableException()
+    {
+        // Security AC: a 200 body larger than the 1 MiB buffer cap must never make the app buffer an
+        // unbounded body. Reading past MaxResponseContentBufferSize surfaces as HttpRequestException,
+        // which converts through the existing transport catch (no new Gateway branch).
+        var oversizedBody = new string('x', (int)(OneMebibyte + 1024));
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, oversizedBody);
+        var gateway = GatewayWithCappedClient(handler);
+
+        var ex = await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+
+        // The over-cap read must surface as HttpRequestException through the transport catch —
+        // not as an incidental JSON-parse failure on the body — so assert the wrapped cause.
+        Assert.IsType<HttpRequestException>(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_converts_an_error_true_body_and_logs_the_reason_at_Error()
+    {
+        // The live 400 fixture carries {"error":true,"reason":…}. The Gateway must convert it to the
+        // typed failure AND log the API's reason at Error before throwing (fail-visible; the reason is
+        // diagnostic, logged not shown). The error:true branch owns this — not the missing-temp guard.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.BadRequest, LoadFixture("error-latitude-out-of-range-400.json"));
+        var logger = new CapturingLogger<OpenMeteoGateway>();
+        var gateway = GatewayWith(handler, logger);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+
+        Assert.Contains(logger.Entries, e =>
+            e.Level == LogLevel.Error && e.Message.Contains("Latitude must be in range"));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_converts_a_non_200_status_with_a_wellformed_body_to_WeatherUnavailableException()
+    {
+        // A non-200 status carrying a WELL-FORMED body (temperature_2m present, °C) must be rejected
+        // by the status guard — a valid body ensures the test reaches the status check rather than
+        // tripping the JsonException path first. The number in the body must never be mapped through.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.ServiceUnavailable,
+            "{\"current_units\":{\"temperature_2m\":\"°C\"},\"current\":{\"temperature_2m\":23.3}}");
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_converts_a_200_body_missing_temperature_2m_to_WeatherUnavailableException()
+    {
+        // A 200 body whose `current` object is present but carries no temperature_2m at all
+        // (live-shaped fixture) must convert to the typed failure — never a fabricated number.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("malformed-missing-temperature.json"));
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_throws_when_the_unit_is_not_celsius()
+    {
+        // A well-formed 200 body whose current_units.temperature_2m is "°F" must be rejected by the
+        // unit assertion — the °C guarantee is proven on the wire, never assumed. The plausible-but-
+        // wrong 73.9 (Fahrenheit) is never mapped through as a Celsius number.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("wrong-unit-fahrenheit-200.json"));
         var gateway = GatewayWith(handler);
 
         await Assert.ThrowsAsync<WeatherUnavailableException>(
