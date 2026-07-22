@@ -45,7 +45,21 @@ Stack is **.NET 10 / C#** (SDK pinned via `global.json` at `10.0.100`). Solution
 - **Build:** `dotnet build`
 - **Test (Tier 1, recorded-replay, every commit):** `dotnet test`
 
-Built so far: `WeatherPoc2.Core` — the Open-Meteo weather seam (`OpenMeteoGateway`,
-`IWeatherGateway`, `WeatherUnavailableException`, `Location`, `WeatherBundle`) — with its xUnit
-test project `WeatherPoc2.Core.Tests`. The MAUI UI shell, ViewModels, and the remaining domain
-modules from `PRD.md` are not built yet.
+Built so far:
+
+- `WeatherPoc2.Core` — the Open-Meteo weather seam (`OpenMeteoGateway`, `IWeatherGateway`,
+  `WeatherUnavailableException`, `Location`, `WeatherBundle`), the `CurrentConditionsViewModel`
+  (CommunityToolkit.Mvvm, fetch-on-load for `Location.LondonGb`, friendly fail-visible error), and
+  the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
+  15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, transient ViewModel). Tested by the
+  xUnit project `WeatherPoc2.Core.Tests`.
+- `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
+  `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
+  routing to a single Current Conditions page, and `Views/CurrentConditionsPage` binding
+  `IsLoading`/`TemperatureDisplay`/`ErrorMessage` and firing `LoadCommand` on `OnAppearing`
+  (MVVM-only). Targets `net10.0-maccatalyst` always; the Windows TFM is built only on a Windows host.
+
+The desktop build/launch verification is deferred to a HITL platform-verification story (the AFK
+runner cannot build either desktop head), so the automated suite is Core Tier-1 only. The remaining
+domain modules from `PRD.md` (Hourly Forecast, Location Search, Search History, Favourites, Units,
+persistence, launch resolver) are not built yet.

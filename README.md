@@ -9,12 +9,25 @@ full product requirements and `Roadmap.md` for the Feature breakdown.
 
 ## Status
 
-Early build. Delivered so far is the **`WeatherPoc2.Core`** library — the Open-Meteo weather seam:
-`OpenMeteoGateway` fetches the current temperature for a Location and converts **every** failure
-(transport/timeout, oversized response, unparseable body, `error:true` body, non-200 status,
-missing `temperature_2m`, or a non-°C unit) into the typed `WeatherUnavailableException`, always
-after logging the endpoint and outcome — so a partial, fabricated, or wrong-unit reading never
-reaches the app. The MAUI UI shell, ViewModels, and the remaining domain modules are not built yet.
+Early build. Delivered so far:
+
+- **`WeatherPoc2.Core`** — the Open-Meteo weather seam: `OpenMeteoGateway` fetches the current
+  temperature for a Location and converts **every** failure (transport/timeout, oversized response,
+  unparseable body, `error:true` body, non-200 status, missing `temperature_2m`, or a non-°C unit)
+  into the typed `WeatherUnavailableException`, always after logging the endpoint and outcome — so a
+  partial, fabricated, or wrong-unit reading never reaches the app. Core also carries the
+  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm) and the OS-agnostic `AddWeatherPoc2Core` DI
+  extension (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway,
+  transient ViewModel).
+- **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
+  `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
+  Current Conditions page which fetches London's temperature on launch (fetch-on-load is the only
+  refresh trigger for now) and renders it, or a friendly error, via MVVM bindings. Targets Mac
+  Catalyst always, with the Windows head built only on a Windows host.
+
+The remaining domain modules (Hourly Forecast, Location Search, Search History, Favourites, Units,
+persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
+follow-on platform-verification story; the automated suite is Core Tier-1 only.
 
 ## Build and test
 
