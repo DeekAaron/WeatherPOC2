@@ -29,4 +29,28 @@ public class OpenMeteoGatewayTests
 
         Assert.Equal(23.3, bundle.CurrentTemperatureCelsius);
     }
+
+    [Fact]
+    public async Task GetWeatherAsync_converts_a_malformed_200_body_to_WeatherUnavailableException()
+    {
+        // A 200 with an unparseable body must surface as the typed failure the app layer catches,
+        // not a raw JsonException. (Malformed-field conversion is in scope for this story; the
+        // transport / non-200 / error:true / unit-mismatch branches are deferred to the failure-paths story.)
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, "{ this is not valid json");
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_converts_a_non_numeric_temperature_to_WeatherUnavailableException()
+    {
+        // temperature_2m present but not a number must also convert to the typed failure.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, "{\"current\":{\"temperature_2m\":\"n/a\"}}");
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
 }

@@ -32,7 +32,19 @@ public sealed class OpenMeteoGateway : IWeatherGateway
         var response = await client.GetAsync(url, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        var parsed = JsonSerializer.Deserialize<OpenMeteoResponse>(body);
+        OpenMeteoResponse? parsed;
+        try
+        {
+            // A malformed body — or a temperature_2m present but non-numeric — must surface as the
+            // contracted WeatherUnavailableException, never a raw JsonException. Catch ONLY JsonException:
+            // transport / non-200 / error:true / unit-mismatch conversion is deferred to the failure-paths story.
+            parsed = JsonSerializer.Deserialize<OpenMeteoResponse>(body);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Open-Meteo GetWeather {Label} {Endpoint} → malformed response body", location.Label, url);
+            throw new WeatherUnavailableException("Open-Meteo response body was not valid JSON", ex);
+        }
 
         if (parsed?.Current?.Temperature2m is not double temperatureCelsius)
         {
