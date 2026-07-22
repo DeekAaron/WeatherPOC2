@@ -20,6 +20,20 @@
     <WindowsPackageType Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">None</WindowsPackageType>
   </PropertyGroup>
   <ItemGroup>
+    <!-- App icon and splash. MAUI requires an app icon (the MacCatalyst Info.plist's
+         XSAppIconAssets resolves to the catalog resizetizer generates from this). -->
+    <MauiIcon Include="Resources/AppIcon/appicon.svg" ForegroundFile="Resources/AppIcon/appiconfg.svg" Color="#512BD4" />
+    <MauiSplashScreen Include="Resources/Splash/splash.svg" Color="#512BD4" BaseSize="128,128" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Explicit since .NET 8: UseMaui no longer implicitly references the MAUI NuGet packages
+         (warning MA002). Without this the Windows build fails (e.g. ILoggingBuilder.AddDebug missing).
+         Surfaced by the HITL platform-verification story (#38). -->
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\WeatherPoc2.Core\WeatherPoc2.Core.csproj" />
   </ItemGroup>
 </Project>

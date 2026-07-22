@@ -21,12 +21,21 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
   call-volume, not money.
 
 ### Fixed
-- `WeatherPoc2.App` Windows head now builds unpackaged: added
-  `<WindowsPackageType>None</WindowsPackageType>` (Windows-conditioned) to `WeatherPoc2.App.csproj`.
-  The app carries no `Platforms/Windows` AppxManifest, so the Windows build previously failed with
-  *"no AppxManifest is specified, but WindowsPackageType is not set to MSIX."* Surfaced by the HITL
-  platform-verification story (#38) — the Linux AFK runner cannot build either desktop head, so this
-  config gap could only be caught by a human building on Windows.
+- `WeatherPoc2.App` desktop heads now have the MAUI platform scaffolding required to build and
+  launch. The app head previously carried only shared code (`App`, `AppShell`, `MauiProgram`,
+  `Views/`) with **no `Platforms/` or `Resources/` folders and no MAUI NuGet reference** — it had
+  never been compiled, because the Linux AFK runner cannot build either desktop head. Surfaced by the
+  HITL platform-verification story (#38), building on Windows exposed three gaps, now fixed:
+  - **`WindowsPackageType=None`** (Windows-conditioned) so the head builds unpackaged (plain `.exe`,
+    launched via `dotnet build -t:Run`); without it the WindowsAppSDK failed with *"no AppxManifest
+    is specified, but WindowsPackageType is not set to MSIX."*
+  - **`Platforms/Windows/`** (`App.xaml`/`App.xaml.cs` WinUI host + `app.manifest`) and
+    **`Platforms/MacCatalyst/`** (`Program.cs` entry point, `AppDelegate.cs`, `Info.plist`) — the
+    per-platform boot files. Without the Windows host the build failed with *"CS5001: Program does
+    not contain a static 'Main'"*.
+  - **`<PackageReference Include="Microsoft.Maui.Controls" />`** (implicit since .NET 8, warning
+    MA002) plus a minimal `Resources/AppIcon` + `Resources/Splash`; without the package the build
+    failed with *"ILoggingBuilder does not contain a definition for 'AddDebug'"*.
 
 ### Decisions
 - No pipeline or schedule wiring is included — explicitly out of scope for this story and this
