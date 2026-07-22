@@ -27,7 +27,9 @@ Early build. Delivered so far:
 
 The remaining domain modules (Hourly Forecast, Location Search, Search History, Favourites, Units,
 persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
-follow-on platform-verification story; the automated suite is Core Tier-1 only.
+follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
+single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
+scheduled path, never per-commit.
 
 ## Build and test
 
@@ -36,5 +38,12 @@ Requires the .NET SDK pinned in `global.json` (`10.0.100`).
 ```sh
 dotnet restore
 dotnet build
-dotnet test    # Tier-1 recorded-replay tests (xUnit)
+dotnet test --filter "Tier!=2-Live"   # per-commit: Tier-1 recorded-replay only, no network
+dotnet test --filter "Tier=2-Live"    # scheduled (daily): live Open-Meteo drift guard
 ```
+
+The Tier-2 test makes one real call to `api.open-meteo.com` for London through the real
+`OpenMeteoGateway` to guard against the recorded fixtures drifting from the live API contract
+(cost ceiling: ≤ 5 live calls per scheduled run, once per day). It is excluded from the
+per-commit run so a plain `dotnet test` has no network dependency; the actual schedule wiring
+lands with the Feature's CI setup.

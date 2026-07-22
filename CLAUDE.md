@@ -43,7 +43,9 @@ Stack is **.NET 10 / C#** (SDK pinned via `global.json` at `10.0.100`). Solution
 
 - **Restore:** `dotnet restore`
 - **Build:** `dotnet build`
-- **Test (Tier 1, recorded-replay, every commit):** `dotnet test`
+- **Test (Tier 1, recorded-replay, every commit):** `dotnet test --filter "Tier!=2-Live"`
+- **Test (Tier 2, live Open-Meteo drift guard, scheduled/daily):** `dotnet test --filter "Tier=2-Live"`
+  — one real call to `api.open-meteo.com`; excluded from the per-commit run (no network there).
 
 Built so far:
 
@@ -52,7 +54,9 @@ Built so far:
   (CommunityToolkit.Mvvm, fetch-on-load for `Location.LondonGb`, friendly fail-visible error), and
   the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
   15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, transient ViewModel). Tested by the
-  xUnit project `WeatherPoc2.Core.Tests`.
+  xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
+  (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
+  and relies on the Gateway's °C unit assertion to prove the live response is in canonical units.
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` binding
@@ -60,6 +64,8 @@ Built so far:
   (MVVM-only). Targets `net10.0-maccatalyst` always; the Windows TFM is built only on a Windows host.
 
 The desktop build/launch verification is deferred to a HITL platform-verification story (the AFK
-runner cannot build either desktop head), so the automated suite is Core Tier-1 only. The remaining
-domain modules from `PRD.md` (Hourly Forecast, Location Search, Search History, Favourites, Units,
-persistence, launch resolver) are not built yet.
+runner cannot build either desktop head), so the automated suite is Core Tier-1 recorded-replay
+(every commit) plus the single Tier-2 live drift guard (scheduled, never per-commit). No pipeline or
+schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
+the Feature's CI setup. The remaining domain modules from `PRD.md` (Hourly Forecast, Location Search,
+Search History, Favourites, Units, persistence, launch resolver) are not built yet.

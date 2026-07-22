@@ -1,12 +1,10 @@
 ## What to build
 
-The thin MAUI app head that completes the end-to-end path in code: on launch the app shows the Current Conditions page, which fires the ViewModel's `LoadCommand` on appearing — fetch-on-load, the **only** refresh trigger in Feature 1 (focus-regain and manual refresh are Feature 9) — rendering London's Temperature or the friendly error.
+The Tier-2 live drift guard: a trait-gated xUnit test (`[Trait("Tier", "2-Live")]`) that makes one real call to `api.open-meteo.com/v1/forecast` for `Location.LondonGb` through the real `OpenMeteoGateway` and asserts a `WeatherBundle` comes back within a sanity band (−60…60). The assertion is **unit-aware by construction**: the Gateway throws `WeatherUnavailableException` unless `current_units.temperature_2m == "°C"`, so a returned bundle proves the live response is in Celsius — a server-side unit-default change fails the test rather than passing a loose plausibility band. This is the ratchet's guard against fixture drift at the Open-Meteo seam.
 
-- `WeatherPoc2.App.csproj` (from Plan Task 1 Step 4, moved into this story): `net10.0-maccatalyst` always; the Windows TFM (`net10.0-windows10.0.19041.0`) guarded behind `IsOSPlatform('windows')` so a non-Windows build leg only builds the Mac Catalyst head. Added to `WeatherPoc2.sln`.
-- `MauiProgram.CreateMauiApp` — the DI host: calls `AddWeatherPoc2Core()` and registers `CurrentConditionsPage` + `AppShell` (this is Seam 3 clause (c-2)'s owning symbol).
-- `App.xaml(.cs)`, `AppShell.xaml(.cs)` (single `ShellContent` route to the page), and `Views/CurrentConditionsPage.xaml(.cs)`: labels bound to `TemperatureDisplay` / `ErrorMessage`, an `ActivityIndicator` bound to `IsLoading`; code-behind only fires `LoadCommand` in `OnAppearing` — no business logic (MVVM-only).
+The trait is what splits the runs: `dotnet test --filter "Tier!=2-Live"` is the per-commit command (no network dependency); `--filter "Tier=2-Live"` is the scheduled (daily) job. Cost ceiling: ≤ 5 live calls per scheduled run, once per day — Open-Meteo is free and keyless, so the ceiling is call-volume, not money.
 
-Covers Plan Task 8 Steps 1–5. **Deliberately excluded:** Task 8 Step 6's platform build/launch proof (Seam 3 clause c-2) — the Linux AFK runner cannot build either desktop head, so that proof is owned by the follow-on HITL platform-verification story. This story's falsifiable checks are the file/code contract and the Core suite staying green.
+Covers Plan Task 9. Wiring the actual schedule into an Azure DevOps pipeline is a pipeline concern **outside this story** (and outside this Feature's code, per the Plan) — the trait makes the split possible; the schedule lands with the Feature's CI setup.
 ## Context references
 
 The docs the AFK Developer Agent must load before implementing this story — carried through from the Plan. Every one is a file in the checkout the Developer Agent already has; it loads them from disk and never queries the tracker:
@@ -21,12 +19,10 @@ The docs the AFK Developer Agent must load before implementing this story — ca
 
 ## Acceptance criteria (ADO Acceptance Criteria field — authoritative)
 
-- [ ] `WeatherPoc2.App.csproj` matches Plan Task 1 Step 4: `net10.0-maccatalyst` always, Windows TFM only when `IsOSPlatform('windows')`, `UseMaui`, single project; referenced from `WeatherPoc2.sln`.
-- [ ] `MauiProgram.CreateMauiApp` calls `AddWeatherPoc2Core()` and registers `CurrentConditionsPage` and `AppShell` in DI (proof of resolution on a real host is deferred to the platform-verification story).
-- [ ] `AppShell.xaml` routes to `CurrentConditionsPage`; the page binds `IsLoading` (spinner), `TemperatureDisplay`, and `ErrorMessage` with `x:DataType` on the ViewModel.
-- [ ] Code-behind contains no business logic: `CurrentConditionsPage.xaml.cs` only sets `BindingContext` and fires `LoadCommand` on `OnAppearing` (MVVM-only).
-- [ ] No persistence code (Req 52) and no secrets in source (Open-Meteo is keyless).
-- [ ] The Core test suite still passes on the AFK runner (`dotnet test`, Tier-1 filter) — the app head introduces no Core change.
+- [ ] `LiveOpenMeteoTests` exists with `[Trait("Tier", "2-Live")]`; its comments record the cost ceiling (≤ 5 live calls per scheduled run, once per day).
+- [ ] `dotnet test --filter "Tier!=2-Live"` runs every Tier-1 test and skips the live test — no network dependency on the per-commit run.
+- [ ] `dotnet test --filter "Tier=2-Live"` passes against the real endpoint: the returned bundle proves the °C unit on the wire (the Gateway's unit assertion), with the −60…60 sanity band on top.
+- [ ] No pipeline or schedule wiring is included — explicitly out of scope per the Plan.
 
 ## Plan and Spec (orchestrator-projected — authoritative for this Run)
 
