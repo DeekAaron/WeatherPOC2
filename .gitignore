@@ -17,6 +17,11 @@ dist/
 build/
 out/
 
+# .NET build output
+[Bb]in/
+[Oo]bj/
+*.user
+
 # AFK orchestrator run artifacts — never commit
 .orchestrator/
 
