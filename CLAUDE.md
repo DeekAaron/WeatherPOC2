@@ -32,7 +32,9 @@ Authority order (lower wins): **ADR > Technical-Context > Context.MD > PRD > Roa
 - **`Context.MD`** — the domain glossary (the project's language).
 - **`docs/project-brief.md`** — the original inbound product brief (source material the PRD
   is built from; not an authority — Context.MD and PRD.md win where they diverge).
-- **`PRD.md`** · **`Roadmap.md`** — product requirements; the ordered Feature list.
+- **`PRD.md`** — product requirements. The **Roadmap** (ordered Feature list, delivery order,
+  inter-Feature dependencies, and lifecycle status) now lives in the project's **ADO Feature work
+  items**, not a file (ADR-0018); `Roadmap.md` has been retired.
 - **`docs/adr/`** — architectural decisions (highest authority).
 - **`docs/superpowers/specs/`** · **`plans/`** — per-Feature Spec and Plan (the Plan carries
   the **Context references** an agent loads).

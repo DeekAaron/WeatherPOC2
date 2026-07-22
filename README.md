@@ -5,7 +5,8 @@ API. It opens on the weather for the Location you last loaded, shows Current Con
 Hourly Forecast, and lets you search Locations, keep a recency-ordered Search History and a set of
 Favourites, and pick your display Units. Weather is always fetched fresh and never stored; when it
 can't be fetched the app says so plainly rather than showing stale numbers. See `PRD.md` for the
-full product requirements and `Roadmap.md` for the Feature breakdown.
+full product requirements; the Feature breakdown (delivery order, dependencies, lifecycle) now lives
+in the project's ADO Feature work items rather than a `Roadmap.md` file.
 
 ## Status
 

@@ -247,6 +247,11 @@ fake at the Gateway seam). Subsequent Features should follow the shapes these fi
   hours. Do not silently change it to a calendar-day boundary.
 - **Next step in the Factory flow:** this PRD feeds `/roadmap`, which breaks it into an ordered list
   of Features; each Feature then gets its own `/brainstorming` → Spec → Plan before any code is written.
+- **The Roadmap lives in ADO, not a file:** the ordered Feature list is delivered in stack-rank
+  order, with inter-Feature dependencies as native Predecessor links and lifecycle status on each
+  work item — all held in the project's **ADO Feature work items** (ADR-0018 / ADR-0019). The former
+  `Roadmap.md` has been retired; **Roadmap** keeps its slot in the authority order as the artefact
+  name, independent of where it is stored.
 - **First-code caveat:** because the repo has no production code yet, the first Feature will also
   stand up the MAUI DI host, `IHttpClientFactory` registration, logging wiring, `global.json` pin, and
   the xUnit test project — establishing the substrate the Testing Decisions above assume.
