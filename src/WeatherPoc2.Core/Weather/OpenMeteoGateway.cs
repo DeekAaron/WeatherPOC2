@@ -29,15 +29,27 @@ public sealed class OpenMeteoGateway : IWeatherGateway
         // Log the endpoint (URL) + outcome — Technical-Context Instrumentation contract.
         _logger.LogInformation("Open-Meteo GetWeather {Label} {Endpoint} → requesting", location.Label, url);
 
-        var response = await client.GetAsync(url, cancellationToken);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        HttpResponseMessage response;
+        string body;
+        try
+        {
+            response = await client.GetAsync(url, cancellationToken);
+            body = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // HttpRequestException = network/DNS/oversized-read; TaskCanceledException = request-timeout expiry.
+            _logger.LogError(ex, "Open-Meteo GetWeather {Label} {Endpoint} → transport failure", location.Label, url);
+            throw new WeatherUnavailableException("Open-Meteo transport failure", ex);
+        }
 
         OpenMeteoResponse? parsed;
         try
         {
             // A malformed body — or a temperature_2m present but non-numeric — must surface as the
-            // contracted WeatherUnavailableException, never a raw JsonException. Catch ONLY JsonException:
-            // transport / non-200 / error:true / unit-mismatch conversion is deferred to the failure-paths story.
+            // contracted WeatherUnavailableException, never a raw JsonException. Catch ONLY JsonException
+            // here; transport, error:true, non-200, missing-field and unit-mismatch each have their own
+            // guard below (branch order: transport → JSON → error:true → status → missing → unit).
             parsed = JsonSerializer.Deserialize<OpenMeteoResponse>(body);
         }
         catch (JsonException ex)
@@ -46,10 +58,32 @@ public sealed class OpenMeteoGateway : IWeatherGateway
             throw new WeatherUnavailableException("Open-Meteo response body was not valid JSON", ex);
         }
 
+        if (parsed is { Error: true })
+        {
+            _logger.LogError("Open-Meteo GetWeather {Label} {Endpoint} → error body: {Reason} (HTTP {Status})",
+                location.Label, url, parsed.Reason, (int)response.StatusCode);
+            throw new WeatherUnavailableException($"Open-Meteo error: {parsed.Reason}");
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError("Open-Meteo GetWeather {Label} {Endpoint} → HTTP {Status}", location.Label, url, (int)response.StatusCode);
+            throw new WeatherUnavailableException($"Open-Meteo HTTP {(int)response.StatusCode}");
+        }
+
         if (parsed?.Current?.Temperature2m is not double temperatureCelsius)
         {
             _logger.LogError("Open-Meteo GetWeather {Label} {Endpoint} → missing temperature_2m", location.Label, url);
             throw new WeatherUnavailableException("Open-Meteo response missing temperature_2m");
+        }
+
+        // Unit assertion — the °C guarantee is proven on the wire, never assumed from the API default.
+        var unit = parsed.CurrentUnits?.Temperature2m;
+        if (!string.Equals(unit, "°C", StringComparison.Ordinal))
+        {
+            _logger.LogError("Open-Meteo GetWeather {Label} {Endpoint} → unexpected unit {Unit} (expected °C)",
+                location.Label, url, unit);
+            throw new WeatherUnavailableException($"Open-Meteo returned unexpected unit '{unit}' (expected °C)");
         }
 
         _logger.LogInformation("Open-Meteo GetWeather {Label} {Endpoint} → {Status}", location.Label, url, (int)response.StatusCode);
