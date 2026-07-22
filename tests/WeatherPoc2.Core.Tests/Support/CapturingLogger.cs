@@ -8,8 +8,14 @@ namespace WeatherPoc2.Core.Tests.Support;
 /// </summary>
 internal sealed class CapturingLogger<T> : ILogger<T>
 {
+    /// <summary>A single captured log entry: its level and rendered message.</summary>
+    public readonly record struct Entry(LogLevel Level, string Message);
+
+    /// <summary>Every log entry (level + rendered message), in the order it was emitted.</summary>
+    public List<Entry> Entries { get; } = new();
+
     /// <summary>The rendered message of each log entry, in the order it was emitted.</summary>
-    public List<string> Messages { get; } = new();
+    public IEnumerable<string> Messages => Entries.Select(e => e.Message);
 
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -21,5 +27,5 @@ internal sealed class CapturingLogger<T> : ILogger<T>
         TState state,
         Exception? exception,
         Func<TState, Exception?, string> formatter)
-        => Messages.Add(formatter(state, exception));
+        => Entries.Add(new Entry(logLevel, formatter(state, exception)));
 }
