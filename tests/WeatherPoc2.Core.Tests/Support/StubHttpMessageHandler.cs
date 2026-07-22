@@ -18,8 +18,13 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
 
     public StubHttpMessageHandler(Exception toThrow) => _toThrow = toThrow;
 
+    /// <summary>The last request the Gateway sent — captured so tests can assert the outgoing request URL.</summary>
+    public HttpRequestMessage? LastRequest { get; private set; }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        LastRequest = request;
+
         if (_toThrow is not null)
             throw _toThrow;
 

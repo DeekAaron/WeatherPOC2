@@ -31,6 +31,23 @@ public class OpenMeteoGatewayTests
     }
 
     [Fact]
+    public async Task GetWeatherAsync_requests_current_temperature_in_celsius_explicitly()
+    {
+        // AC #5: the request URL must ask Open-Meteo for the current temperature in Celsius
+        // *explicitly* — not rely on the API default. Assert the outgoing request URI carries
+        // both the current=temperature_2m selection and the temperature_unit=celsius clause.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-temperature-london-200.json"));
+        var gateway = GatewayWith(handler);
+
+        await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        var requestUrl = handler.LastRequest?.RequestUri?.ToString();
+        Assert.NotNull(requestUrl);
+        Assert.Contains("current=temperature_2m", requestUrl);
+        Assert.Contains("temperature_unit=celsius", requestUrl);
+    }
+
+    [Fact]
     public async Task GetWeatherAsync_converts_a_malformed_200_body_to_WeatherUnavailableException()
     {
         // A 200 with an unparseable body must surface as the typed failure the app layer catches,
