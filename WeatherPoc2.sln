@@ -11,6 +11,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WeatherPoc2.Core.Tests", "tests\WeatherPoc2.Core.Tests\WeatherPoc2.Core.Tests.csproj", "{4EEEDFE7-B596-4B21-BE6A-56D3945F37C2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WeatherPoc2.App", "src\WeatherPoc2.App\WeatherPoc2.App.csproj", "{F800C4BC-F680-4960-86C0-4C700A552CB5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -45,6 +47,18 @@ Global
 		{4EEEDFE7-B596-4B21-BE6A-56D3945F37C2}.Release|x64.Build.0 = Release|Any CPU
 		{4EEEDFE7-B596-4B21-BE6A-56D3945F37C2}.Release|x86.ActiveCfg = Release|Any CPU
 		{4EEEDFE7-B596-4B21-BE6A-56D3945F37C2}.Release|x86.Build.0 = Release|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Debug|x64.Build.0 = Debug|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Debug|x86.Build.0 = Debug|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Release|x64.ActiveCfg = Release|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Release|x64.Build.0 = Release|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Release|x86.ActiveCfg = Release|Any CPU
+		{F800C4BC-F680-4960-86C0-4C700A552CB5}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -52,5 +66,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{73DCB7D0-50D1-4169-BDAD-16D49A67F154} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{4EEEDFE7-B596-4B21-BE6A-56D3945F37C2} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{F800C4BC-F680-4960-86C0-4C700A552CB5} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
