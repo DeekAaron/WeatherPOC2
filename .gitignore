@@ -33,3 +33,6 @@ out/
 # flag them as forgotten uncommitted work.
 docs/superpowers/specs/
 docs/superpowers/plans/
+
+# /brainstorming visual-companion scratch (mockups + server state) — transient, never committed.
+.superpowers/
