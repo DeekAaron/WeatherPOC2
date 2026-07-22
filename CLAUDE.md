@@ -39,6 +39,13 @@ Authority order (lower wins): **ADR > Technical-Context > Context.MD > PRD > Roa
 
 ## Dev commands
 
-<!-- TODO(init): fill once the stack is chosen — install / test tiers / run.
-     Written by /init-tech-context or the first feature build. -->
-_Dev commands not set yet — filled when the stack is chosen (`/init-tech-context`)._
+Stack is **.NET 10 / C#** (SDK pinned via `global.json` at `10.0.100`). Solution: `WeatherPoc2.sln`.
+
+- **Restore:** `dotnet restore`
+- **Build:** `dotnet build`
+- **Test (Tier 1, recorded-replay, every commit):** `dotnet test`
+
+Built so far: `WeatherPoc2.Core` — the Open-Meteo weather seam (`OpenMeteoGateway`,
+`IWeatherGateway`, `WeatherUnavailableException`, `Location`, `WeatherBundle`) — with its xUnit
+test project `WeatherPoc2.Core.Tests`. The MAUI UI shell, ViewModels, and the remaining domain
+modules from `PRD.md` are not built yet.

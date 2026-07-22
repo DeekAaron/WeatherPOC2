@@ -1,14 +1,17 @@
 ## What to build
 
-The walking skeleton of the testable Core: pin the SDK (`global.json`: `10.0.100`, `rollForward: latestFeature`), create the solution with the `WeatherPoc2.Core` class library (`net10.0`) and the `WeatherPoc2.Core.Tests` xUnit project, add the domain records, and stand up the Open-Meteo Gateway seam's happy path end-to-end: a captured real Open-Meteo 200 body flows through real file I/O and real `System.Text.Json` into a `WeatherBundle` carrying London's current Temperature in canonical °C.
+Complete Seam 1's failure clause: add the typed `WeatherUnavailableException` and make `OpenMeteoGateway` convert **every** failure mode into it — always after logging endpoint + outcome at Error — so the app never surfaces a partial, fabricated, or wrong-unit Temperature (fail-visible, Reqs 11/53).
 
-- `Location` is a resolved place per `Context.MD` (coordinates + label + `OpenMeteoId`, null until geocoding mints it in Feature 3); Feature 1 exposes the single hard-coded constant `Location.LondonGb` (51.5074, −0.1278, "London, GB").
-- `OpenMeteoGateway.GetWeatherAsync` builds the `/v1/forecast` request with `&temperature_unit=celsius` **explicitly**, deserializes with `System.Text.Json` including the `current_units` DTO (the unit *assertion* branch lands with the failure-paths story, TDD ordering), maps `current.temperature_2m` → `WeatherBundle.CurrentTemperatureCelsius`, and logs endpoint (URL) + outcome via `ILogger<OpenMeteoGateway>` (Technical-Context Instrumentation contract).
-- The recorded-replay test fakes only the HTTP transport (stub `HttpMessageHandler`); the fixture is read from the test output directory via `CopyToOutputDirectory` — the Seam 2 build/emit contract.
+The six failure modes, each with its own Tier-1 recorded-replay test: transport failure (`HttpRequestException` / `TaskCanceledException` — the real-IO-on-one-side proof for the seam), HTTP non-200 reached via the **status guard** (the test body must be well-formed JSON so it does not trip the `JsonException` branch first), an `error:true` body (live-captured 400 fixture), an unparseable body (`JsonException` branch, named distinctly), a missing `temperature_2m`, and the **°C unit assertion** — `current_units.temperature_2m` != `"°C"` is a failure path, proven by the wrong-unit `"°F"` fixture, so a non-°C payload is never mapped through as a plausible-but-wrong number (the gauntlet's finding 2, fixed in the Plan).
 
-Covers Plan Tasks 1 (Core + Tests portions), 2, and 4. The MAUI app-head project of Task 1 is deliberately **not** in this story — it is added by the app-head story, because MAUI workloads do not restore on the Linux AFK runner.
+Covers Plan Tasks 3 and 5. Red-phase note (corrected in gauntlet fix pass 1): four of the six tests are true reds; the `error:true` and missing-field cases are already green from the happy-path story's missing-temperature guard.
 
-**Known-issues carried from the feature-doc-gauntlet:** A2 — this is the first story to touch the scaffold, so its **first proof** is `dotnet restore` / `build` / `test` green on a .NET-10-SDK runner (the pinned package versions are pinned-but-unverified until that live restore). A7 (informational) — the committed happy-path fixture (`23.3` @ 14:15) and the Spec's Seam-1 (e) re-grounding quote (`23.8` @ 15:00) are two different valid same-day live captures, not a contradiction.
+**Known-issue carried from the gauntlet (informational):** A5 — the tests constructing `HttpClient` directly around the stub handler are sanctioned test idiom; the `IHttpClientFactory` rule is a production-code constraint.
+
+**Security pass (/check-security-design):** the transport failure mode gains two sibling tests, extending the Gateway suite from 7 to 9 tests — no new Gateway branch is added; both prove paths through the **existing** transport catch:
+
+- a `TaskCanceledException` test — the catch clause names this exception (it is how a request-timeout expiry surfaces) but only `HttpRequestException` had a test; the timeout half of the fail-closed promise was unproven.
+- an oversized-response test — a 200 body larger than 1 MB, read through an `HttpClient` whose `MaxResponseContentBufferSize` is 1,048,576 bytes (the test constructs this client directly, sanctioned per A5; the production named client gets the same cap in the ViewModel + DI story), surfaces as `HttpRequestException` and converts to `WeatherUnavailableException` — a hostile or misbehaving service can never make the app buffer an unbounded body.
 ## Context references
 
 The docs the AFK Developer Agent must load before implementing this story — carried through from the Plan. Every one is a file in the checkout the Developer Agent already has; it loads them from disk and never queries the tracker:
@@ -23,14 +26,18 @@ The docs the AFK Developer Agent must load before implementing this story — ca
 
 ## Acceptance criteria (ADO Acceptance Criteria field — authoritative)
 
-- [ ] First proof (gauntlet advisory A2): `dotnet restore`, `dotnet build`, and `dotnet test` run green on a .NET-10-SDK runner, confirming the pinned package versions against a live restore.
-- [ ] `global.json` pins `sdk.version` `10.0.100` with `rollForward: latestFeature`; `WeatherPoc2.sln` contains `WeatherPoc2.Core` and `WeatherPoc2.Core.Tests` per Plan Task 1 (the App head project is added by the app-head story).
-- [ ] `Location` record with `Location.LondonGb` — latitude 51.5074, longitude −0.1278, label "London, GB", `OpenMeteoId` null — proven by `LocationTests`.
-- [ ] `WeatherBundle` record carries `CurrentTemperatureCelsius` (canonical °C per ADR-0001); no unit conversion anywhere (that is Feature 5).
-- [ ] `IWeatherGateway` / `OpenMeteoGateway` exist with the full-shape signature `GetWeatherAsync(Location, CancellationToken)`; the request URL includes `&temperature_unit=celsius` explicitly; the `current_units` DTO is deserialized.
-- [ ] Recorded-replay happy-path test green: the live-captured `current-temperature-london-200.json` fixture, read via real file I/O from the test output directory (`CopyToOutputDirectory` — Seam 2), through real `System.Text.Json` → `CurrentTemperatureCelsius == 23.3`.
-- [ ] The Gateway logs endpoint (URL) + outcome via `ILogger<OpenMeteoGateway>` on the request line and every outcome line (Technical-Context Instrumentation contract).
-- [ ] No persistence code (Req 52); all I/O is async — no `.Result`, no `.Wait()` (Technical-Context).
+- [ ] `WeatherUnavailableException` exists and is the single typed failure the app layer catches.
+- [ ] Six Tier-1 failure tests green (Plan Task 5): non-200 with a **well-formed** JSON body (reaches the status guard), `error:true` 400 fixture, unparseable body at 200 (`JsonException` branch), transport `HttpRequestException`, missing `temperature_2m`, and wrong-unit `"°F"` fixture (the unit-assertion proof).
+- [ ] Branch order per Plan Task 5 Step 5: transport catch → `JsonException` catch → `error:true` → non-200 status guard → missing `temperature_2m` → °C unit assertion.
+- [ ] Every failure logs endpoint (URL) + diagnostic at Error **before** throwing; no failure is swallowed (fail-visible; auth/secret material never logged — Open-Meteo has none).
+- [ ] The happy-path test still passes; the full Gateway suite (happy path + six failure modes + the two security-pass tests below = 9 tests) is green via `dotnet test`.
+
+### Security acceptance criteria
+<!-- Added by /check-security-design (threat: a slow, cancelled, or arbitrarily large Open-Meteo response — the app's only trust boundary — hangs the load or exhausts memory; the timeout/cancellation branch existed but was untested). Each is independently
+     testable; the post-PR /review-implementation-security gate checks the merged diff
+     against these. -->
+- [ ] A Tier-1 test whose stub transport throws `TaskCanceledException` asserts `GetWeatherAsync` throws `WeatherUnavailableException` — proving the timeout/cancellation half of the transport catch (previously only `HttpRequestException` was tested).
+- [ ] A Tier-1 test whose stub returns a 200 response with a body larger than 1 MB, through an `HttpClient` whose `MaxResponseContentBufferSize` is 1,048,576 bytes, asserts `GetWeatherAsync` throws `WeatherUnavailableException` — the oversized read surfaces as `HttpRequestException` and converts through the existing transport catch (no new Gateway branch).
 
 ## Plan and Spec (orchestrator-projected — authoritative for this Run)
 
