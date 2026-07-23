@@ -25,7 +25,9 @@ public static class ServiceCollectionExtensions
         });
         services.AddSingleton<IWeatherGateway, OpenMeteoGateway>();
         services.AddSingleton<WeatherConditionMapper>();   // pure + stateless
+        services.AddSingleton<ILoadedLocation, LoadedLocation>();   // shared across the app (search flow ↔ Current Conditions)
         services.AddTransient<CurrentConditionsViewModel>();
+        services.AddTransient<LocationSearchViewModel>();
         return services;
     }
 }

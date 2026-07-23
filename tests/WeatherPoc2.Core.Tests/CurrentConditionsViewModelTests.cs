@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using WeatherPoc2.Core.Navigation;
 using WeatherPoc2.Core.Tests.Support;
 using WeatherPoc2.Core.ViewModels;
 using WeatherPoc2.Core.Weather;
@@ -10,9 +11,22 @@ namespace WeatherPoc2.Core.Tests;
 
 public class CurrentConditionsViewModelTests
 {
-    // The ViewModel now derives the condition/icon via the real (pure) mapper — exercised real, not faked.
+    // Feature 3 changes ONLY the Location source: the ViewModel reads ILoadedLocation.Current instead
+    // of Location.LondonGb, and gains OpenSearchCommand. The Feature-2 five-display panel and the real
+    // (pure) WeatherConditionMapper are preserved and still exercised real, not faked.
+    private static readonly Location AnyLoaded =
+        new(51.50853, -0.12574, "London, England, United Kingdom", 2643743);
+
+    private static ILoadedLocation LoadedWith(Location location)
+    {
+        var holder = new LoadedLocation();
+        holder.Set(location);
+        return holder;
+    }
+
     private static CurrentConditionsViewModel VmWith(IWeatherGateway gateway)
-        => new(gateway, new WeatherConditionMapper(), NullLogger<CurrentConditionsViewModel>.Instance);
+        => new(gateway, LoadedWith(AnyLoaded), new WeatherConditionMapper(),
+               Substitute.For<INavigator>(), NullLogger<CurrentConditionsViewModel>.Instance);
 
     [Fact]
     public async Task Load_shows_the_temperature_and_no_error_on_success()
@@ -27,6 +41,19 @@ public class CurrentConditionsViewModelTests
         Assert.Equal("23.3 °C", vm.TemperatureDisplay);
         Assert.Null(vm.ErrorMessage);
         Assert.False(vm.IsLoading);
+    }
+
+    [Fact]
+    public async Task Load_uses_the_loaded_location()
+    {
+        var gateway = Substitute.For<IWeatherGateway>();
+        gateway.GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>())
+               .Returns(new WeatherBundle(23.3, 10.0, 20, 0, true));
+        var vm = VmWith(gateway);
+
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        await gateway.Received(1).GetWeatherAsync(AnyLoaded, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -68,7 +95,8 @@ public class CurrentConditionsViewModelTests
         gateway.GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>())
                .Returns(new WeatherBundle(26.5, 12.6, 40, null, true)); // weatherCode absent -> Unknown; is_day day
         var logger = new CapturingLogger<CurrentConditionsViewModel>();
-        var vm = new CurrentConditionsViewModel(gateway, new WeatherConditionMapper(), logger);
+        var vm = new CurrentConditionsViewModel(gateway, LoadedWith(AnyLoaded), new WeatherConditionMapper(),
+                                                Substitute.For<INavigator>(), logger);
 
         await vm.LoadCommand.ExecuteAsync(null);
 
@@ -85,7 +113,8 @@ public class CurrentConditionsViewModelTests
         gateway.GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>())
                .Returns(new WeatherBundle(26.5, 12.6, 40, 0, null)); // clear; is_day absent -> day variant
         var logger = new CapturingLogger<CurrentConditionsViewModel>();
-        var vm = new CurrentConditionsViewModel(gateway, new WeatherConditionMapper(), logger);
+        var vm = new CurrentConditionsViewModel(gateway, LoadedWith(AnyLoaded), new WeatherConditionMapper(),
+                                                Substitute.For<INavigator>(), logger);
 
         await vm.LoadCommand.ExecuteAsync(null);
 
@@ -104,13 +133,40 @@ public class CurrentConditionsViewModelTests
 
         await vm.LoadCommand.ExecuteAsync(null);
 
-        // Security AC: all five measures cleared — no stale/partial reading presented as current.
+        // All five measures cleared — no stale/partial reading presented as current.
         Assert.Equal(string.Empty, vm.TemperatureDisplay);
         Assert.Null(vm.ChanceOfRainDisplay);
         Assert.Null(vm.WindSpeedDisplay);
         Assert.Null(vm.ConditionText);
         Assert.Null(vm.IconSource);
-        // Security AC: friendly copy only — no HTTP status, exception detail, unit string, or hour key leaked.
+        // Friendly copy only — no HTTP status, exception detail, unit string, or hour key leaked.
         Assert.Equal("Couldn't reach the weather service — check your connection and try again.", vm.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Load_does_not_fetch_when_no_location_is_loaded()
+    {
+        var gateway = Substitute.For<IWeatherGateway>();
+        // Current == null (launch state — search shows first)
+        var vm = new CurrentConditionsViewModel(gateway, new LoadedLocation(), new WeatherConditionMapper(),
+                                                Substitute.For<INavigator>(), NullLogger<CurrentConditionsViewModel>.Instance);
+
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        await gateway.DidNotReceive().GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>());
+        Assert.False(vm.IsLoading);
+    }
+
+    [Fact]
+    public async Task OpenSearch_requests_navigation_to_the_search_screen()
+    {
+        var navigator = Substitute.For<INavigator>();
+        var vm = new CurrentConditionsViewModel(Substitute.For<IWeatherGateway>(), new LoadedLocation(),
+                                                new WeatherConditionMapper(), navigator,
+                                                NullLogger<CurrentConditionsViewModel>.Instance);
+
+        await vm.OpenSearchCommand.ExecuteAsync(null);
+
+        await navigator.Received(1).GoToSearchAsync();
     }
 }
