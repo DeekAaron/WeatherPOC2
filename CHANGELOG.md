@@ -5,6 +5,35 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-23
 
 ### Added
+- **Geocoding search seam** (Story #64) — the second half of the Open-Meteo Gateway boundary the PRD
+  always described (`Search(name)` → Search Candidates), now built. `IWeatherGateway` gains
+  `SearchAsync(name, ct)` returning `IReadOnlyList<SearchCandidate>`, and `OpenMeteoGateway` implements it
+  against the geocoding endpoint (`geocoding-api.open-meteo.com/v1/search`, fixed
+  `count=10&language=en&format=json`).
+  - **`SearchCandidate`** — a new record (`Id`, `Name`, `Region`, `Country`, `Latitude`, `Longitude`) whose
+    `Label` reads "Name, Region, Country", collapsing to "Name, Country" when the Open-Meteo `admin1`
+    (Region) is absent. It is a Search Candidate, not yet a Location — per Context.MD it becomes one only
+    when the user picks it (PRD reqs 22–24).
+  - **Typed, fail-visible failure** — every geocoding failure mode (transport/timeout, unparseable body,
+    non-2xx status) is logged at Error with endpoint + outcome and converted to the new
+    `LocationSearchUnavailableException`, kept distinct from `WeatherUnavailableException` so the two failure
+    domains stay independently worded. This is what lets the app tell "no such place" from "couldn't reach
+    the service" (PRD req 26; Technical-Context Overriding Principle 1).
+  - **No match is not an error** — a 200 with the `results` key absent (proven live 2026-07-23) maps to an
+    empty list, never an exception, so the search screen can render a plain "No matching places found" and
+    stay put (PRD req 25).
+  - **Query-parameter injection guarded** (security AC) — the untrusted `name` is percent-encoded via
+    `Uri.EscapeDataString` inside the `name` value only, so a crafted query can neither inject an extra query
+    parameter nor override the fixed count/format/language; locked by a regression test.
+  - **Tier-2 live geocoding drift guard** — `LiveOpenMeteoTests` gains
+    `Live_London_geocoding_returns_candidates`: one real geocoding call for "London" asserting the GB result
+    resolves, guarding the recorded geocoding fixtures against live-contract drift. Trait-gated
+    (`[Trait("Tier","2-Live")]`), never per-commit, within F1's ≤ 5 live calls/day ceiling.
+  - Covered by three Tier-1 recorded-replay fixtures (`geocoding-london-200`, `geocoding-no-match-200`,
+    `geocoding-singapore-admin1-absent-200`) plus `OpenMeteoGeocodingTests` / `SearchCandidateTests` —
+    candidate mapping, label composition with and without Region, empty-on-no-match, each typed-failure path,
+    request shape, the injection-encoding regression, and endpoint+outcome logging. $0, every commit.
+
 - **Current Conditions Layout C panel + bundled weather icon assets** (Story #57) — the App-head
   presentation slice. `Views/CurrentConditionsPage` becomes the Layout C panel: a weather `Image`
   (bound to `IconSource`) + `ConditionText` + `TemperatureDisplay` header grid above stacked

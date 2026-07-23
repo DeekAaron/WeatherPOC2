@@ -20,7 +20,12 @@ Early build. Delivered so far:
   into the typed `WeatherUnavailableException`, always after logging the endpoint and outcome — so a
   partial, fabricated, or wrong-unit reading never reaches the app. The icon hints are lenient: an
   absent `weather_code`/`is_day` flows through as `null` (resolved downstream by the mapper) rather
-  than failing the fetch. Core also carries the
+  than failing the fetch. The Gateway also carries the **geocoding half** of the seam —
+  `SearchAsync(name)` resolves a typed name against Open-Meteo's geocoding endpoint into a list of
+  `SearchCandidate`s (label, region/country, coordinates), returning an empty list when nothing matches
+  (a plain "no matching places", not an error) and converting every failure into the typed
+  `LocationSearchUnavailableException` after logging — so the app can tell "no such place" apart from
+  "couldn't reach the service". Core also carries the
   `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), which composes the bundle and the Weather
   Condition Mapper into the full displayable panel — temperature, chance of rain, wind speed,
   condition text, and a day/night icon — or, on failure, clears every field and shows one friendly
@@ -41,8 +46,9 @@ Early build. Delivered so far:
   drawn from the fixed 15-key `WeatherIconKeys` set. It does no I/O and no logging; an unrecognized
   or absent code falls back to `Unknown` and is flagged `Recognized: false` for the caller to log.
 
-The remaining domain modules (Hourly Forecast, Location Search, Search History, Favourites, Units,
-persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
+The remaining domain modules (Hourly Forecast, Location Search — its Gateway geocoding seam is built,
+but the search screen and its ViewModel are not — Search History, Favourites, Units, persistence,
+launch resolver) are not built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
 scheduled path, never per-commit.
