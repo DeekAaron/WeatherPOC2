@@ -78,6 +78,22 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
     unknown/null fall-back, display names) and `WeatherIconKeysTests` (the icon-key set is exactly
     the 15 declared keys), Tier-1 and $0.
 
+### Changed
+- **Tier-2 live drift guard extended to the widened bundle** (Story #58) — F1's
+  `Live_London_fetch_returns_a_celsius_bundle` is replaced by
+  `Live_London_fetch_returns_a_full_current_conditions_bundle`, which makes the same single real
+  Open-Meteo call for London but now asserts the **full** widened `WeatherBundle` comes back
+  (temperature, wind speed, current-hour chance of rain), not just Celsius. This matters because the
+  live guard exists to catch the recorded Tier-1 fixtures drifting from the live contract, and that
+  contract widened at the Gateway seam (Story #55) — a °C-only assertion would no longer notice a
+  server-side drift in the km/h units or the current-hour precipitation shape. No looser plausibility
+  band is introduced: the widened Gateway throws `WeatherUnavailableException` unless both unit pins
+  (°C, km/h) hold and the current hour resolves in `hourly.time[]`, so a returned full bundle *is* the
+  unit-aware + current-hour assertion, with `InRange` sanity bands sitting atop that guarantee. Stays
+  one trait-gated (`[Trait("Tier","2-Live")]`) call — excluded from the per-commit run
+  (`dotnet test --filter "Tier!=2-Live"`), selected only by `--filter "Tier=2-Live"` — within F1's
+  ≤ 5 live calls/day ceiling. No new fixture, no pipeline/schedule wiring.
+
 ## [Unreleased] - 2026-07-22
 
 ### Added
