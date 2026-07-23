@@ -21,9 +21,11 @@ Early build. Delivered so far:
   partial, fabricated, or wrong-unit reading never reaches the app. The icon hints are lenient: an
   absent `weather_code`/`is_day` flows through as `null` (resolved downstream by the mapper) rather
   than failing the fetch. Core also carries the
-  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm) and the OS-agnostic `AddWeatherPoc2Core` DI
-  extension (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway,
-  transient ViewModel).
+  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), which composes the bundle and the Weather
+  Condition Mapper into the full displayable panel — temperature, chance of rain, wind speed,
+  condition text, and a day/night icon — or, on failure, clears every field and shows one friendly
+  error. The OS-agnostic `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
+  15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
   Current Conditions page which fetches London's temperature on launch (fetch-on-load is the only

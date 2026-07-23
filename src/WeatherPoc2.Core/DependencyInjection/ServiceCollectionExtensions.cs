@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
             c.MaxResponseContentBufferSize = 1_048_576;
         });
         services.AddSingleton<IWeatherGateway, OpenMeteoGateway>();
+        services.AddSingleton<WeatherConditionMapper>();   // pure + stateless
         services.AddTransient<CurrentConditionsViewModel>();
         return services;
     }

@@ -5,6 +5,23 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-23
 
 ### Added
+- **Current Conditions ViewModel mapper wiring + DI registration** (Story #56) — joins the two prior
+  slices into displayable state. `CurrentConditionsViewModel` gains a `WeatherConditionMapper` ctor
+  dependency (alongside F1's `IWeatherGateway` + `ILogger`) and four new display properties —
+  `ChanceOfRainDisplay`, `WindSpeedDisplay`, `ConditionText`, and `IconSource` — so the panel now
+  renders the full Current Conditions payload, not just temperature. On a successful fetch the VM maps
+  `CurrentWeatherCode`/`IsDay` to the condition word and a day/night icon key (`{iconKey}.png`).
+  - **Fail-visible fall-backs** (Technical-Context Overriding Principle 1) — the mapper's lenient
+    fall-backs are logged, never silent: an unrecognized/absent `weather_code` and a null `is_day` each
+    emit a `Warning`, so a degraded read is observable rather than swallowed.
+  - **No stale/partial panel on failure** (security AC) — on `WeatherUnavailableException` every one of
+    the five displays is cleared and only the fixed friendly copy is surfaced; no upstream or internal
+    detail leaks, and no earlier reading lingers as if current.
+  - **`WeatherConditionMapper` registered as a singleton** in `AddWeatherPoc2Core` (pure + stateless),
+    so a real container with `validateScopes: true` resolves the ViewModel with the mapper injected;
+    `MauiProgram` is unchanged. Covered by new VM and service-registration tests (Tier-1, $0); F1's
+    existing tests were updated for the new ctor parameter.
+
 - **Widened Current Conditions at the Gateway seam** (Story #55) — `OpenMeteoGateway` now requests the
   full Current Conditions payload (`current=temperature_2m,wind_speed_10m,weather_code,is_day`,
   `hourly=precipitation_probability`) and pins **both** canonical units explicitly on the wire
