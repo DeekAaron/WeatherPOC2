@@ -52,10 +52,16 @@ Built so far:
 - `WeatherPoc2.Core` — the Open-Meteo seam (`OpenMeteoGateway`, `IWeatherGateway`,
   `WeatherUnavailableException`, `LocationSearchUnavailableException`, `Location`, `WeatherBundle`,
   `SearchCandidate`), the `CurrentConditionsViewModel`
-  (CommunityToolkit.Mvvm, fetch-on-load for `Location.LondonGb`, friendly fail-visible error), and
+  (CommunityToolkit.Mvvm, fetch-on-load for the currently loaded Location, friendly fail-visible
+  error), and
   the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
   15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, singleton `WeatherConditionMapper`,
-  transient ViewModel). The ViewModel now composes the widened `WeatherBundle` and the
+  singleton `ILoadedLocation`→`LoadedLocation`, transient `CurrentConditionsViewModel` +
+  `LocationSearchViewModel`). Story #66 retired the hard-coded `Location.LondonGb`: `LoadAsync` now
+  reads `ILoadedLocation.Current` (a fourth ctor dependency alongside the mapper and a new
+  `INavigator`), no-ops when it is null (launch shows search first — Seam-2 defensive path), and the
+  ViewModel exposes an `OpenSearchCommand` that routes to search via `INavigator.GoToSearchAsync`.
+  The ViewModel composes the widened `WeatherBundle` and the
   `WeatherConditionMapper` (a third ctor dependency alongside `IWeatherGateway` + `ILogger`) into the
   full displayable panel — `TemperatureDisplay`, `ChanceOfRainDisplay`, `WindSpeedDisplay`,
   `ConditionText`, and `IconSource` (`{iconKey}.png`) — mapping `CurrentWeatherCode`/`IsDay` on
@@ -95,7 +101,7 @@ Built so far:
   `WeatherIconKeys.All` set; freezing-precipitation codes (56/57/66/67) fold into Snow, and an
   unlisted or null code returns `Unknown` with `Recognized: false` (the caller logs the fallback).
   Core also carries the **Location Search ViewModel and its two supporting seams** (Story #65 —
-  the ViewModel and orchestration only; the App-head search screen, its DI registration, and the
+  the ViewModel and orchestration; registered in DI by Story #66. The App-head search screen and the
   `INavigator` implementation are **not** built yet). `LocationSearchViewModel`
   (`WeatherPoc2.Core.ViewModels`, CommunityToolkit.Mvvm) exposes `Query`, an observable
   `Candidates` collection, and `StatusMessage`/`ErrorMessage`, with a `SearchCommand` that no-ops on
@@ -113,7 +119,9 @@ Built so far:
   `GoToSearchAsync`) that keeps the ViewModels MAUI-free (Overriding Principle 2) — the App head will
   implement it over Shell routing. Covered by `LocationSearchViewModelTests` (hits/no-match/error/
   blank-query, and the mint→set→navigate ordering red-guarded with `Received.InOrder`) and
-  `LoadedLocationTests` (Tier-1, $0). Not yet registered in `AddWeatherPoc2Core`.
+  `LoadedLocationTests` (Tier-1, $0). Registered in `AddWeatherPoc2Core` as of Story #66
+  (`ILoadedLocation` singleton, `LocationSearchViewModel` transient); `ServiceRegistrationTests`
+  cover the resolution and the holder's singleton lifetime.
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -134,6 +142,6 @@ runner cannot build either desktop head), so the automated suite is Core Tier-1 
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
 the Feature's CI setup. The remaining domain modules from `PRD.md` (Hourly Forecast, Location Search —
 its Gateway geocoding seam and its `LocationSearchViewModel` (plus the `ILoadedLocation` holder and
-`INavigator` abstraction) are built, but the search screen, the DI wiring for those types, and the
+`INavigator` abstraction) are built and wired into DI, but the search screen and the
 `INavigator` Shell implementation are not — Search History, Favourites, Units, persistence, launch
 resolver) are not built yet.

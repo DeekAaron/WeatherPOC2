@@ -2,7 +2,30 @@
 
 All notable changes to WeatherPOC2 are recorded here. The **why** matters as much as the **what**.
 
-## [Unreleased] - 2026-07-23
+## [Unreleased] - 2026-07-24
+
+### Changed
+- **Retire the hard-coded Location; wire Current Conditions to the loaded Location + DI registration**
+  (Story #66) — closes the Feature 3 seam between Location Search and Current Conditions and registers
+  the new types so the graph resolves.
+  - **`CurrentConditionsViewModel` now reads `ILoadedLocation.Current`** instead of the hard-coded
+    `Location.LondonGb` constant. `LoadAsync` no-ops when nothing is loaded yet (the brand-new-user
+    launch state, where search shows first) — the Seam-2 defensive path that keeps it from fetching a
+    null Location. Two new ctor dependencies: `ILoadedLocation` (the shared holder) and `INavigator`.
+    Why: London-on-launch was Feature-2 scaffolding; the product opens on the *loaded* Location, and
+    the holder is the shared seam Location Search writes and Current Conditions reads (PRD data flow).
+  - **`OpenSearchCommand`** — a new relay command that routes to the search screen via
+    `INavigator.GoToSearchAsync`, so the user can reach search from Current Conditions without the
+    ViewModel taking a MAUI dependency (Overriding Principle 2, MVVM-only).
+  - **DI wiring** — `AddWeatherPoc2Core` now registers `ILoadedLocation`→`LoadedLocation` as a
+    **singleton** (one holder shared across the search flow ↔ Current Conditions) and
+    `LocationSearchViewModel` as **transient**, alongside the existing `CurrentConditionsViewModel`.
+    The Story #65 types are now reachable through the container. The App head supplies the `INavigator`
+    implementation (not built yet), so `ServiceRegistrationTests` register a substitute `INavigator`
+    to build the provider.
+  - Covered by new/updated `CurrentConditionsViewModelTests` (reads the loaded Location; no-ops when
+    none loaded; `OpenSearch` requests navigation) and `ServiceRegistrationTests` (search VM resolves;
+    holder is a singleton). Tier-1, $0, every commit. No new packages.
 
 ### Added
 - **Location Search ViewModel + its two supporting seams** (Story #65) — the orchestration half of the
