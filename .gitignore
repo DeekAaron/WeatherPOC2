@@ -24,6 +24,10 @@ out/
 
 # AFK orchestrator run artifacts — never commit
 .orchestrator/
+# Per-story working file the orchestrator writes into the checkout; transient,
+# like the Spec/Plan docs below. Ignored (not just untracked) so the repo-hygiene
+# check doesn't fail closed on it (bug #96279).
+STORY.md
 
 # ADO mode (.factory.yml declares `ado:`): Spec/Plan docs are transient local
 # artifacts written by /brainstorming and /writing-plans. /publish-feature
