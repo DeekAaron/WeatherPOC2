@@ -16,7 +16,7 @@ public class CurrentConditionsViewModelTests
     {
         var gateway = Substitute.For<IWeatherGateway>();
         gateway.GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>())
-               .Returns(new WeatherBundle(23.3));
+               .Returns(new WeatherBundle(23.3, 10.0, 20, 0, true));
         var vm = VmWith(gateway);
 
         await vm.LoadCommand.ExecuteAsync(null);
