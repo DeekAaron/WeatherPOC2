@@ -57,6 +57,12 @@ Built so far:
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
   and relies on the Gateway's °C unit assertion to prove the live response is in canonical units.
+  Core also carries the pure **Weather Condition Mapper** (`WeatherConditionMapper`,
+  `WeatherConditionResult`, the `WeatherCondition` enum, and `WeatherIconKeys`) — a deterministic,
+  I/O-free `Map(weatherCode, isDay)` that collapses Open-Meteo's numeric WMO codes onto the curated
+  `WeatherCondition` set with a display name and a day/night icon-asset key from the fixed 15-key
+  `WeatherIconKeys.All` set; freezing-precipitation codes (56/57/66/67) fold into Snow, and an
+  unlisted or null code returns `Unknown` with `Recognized: false` (the caller logs the fallback).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` binding

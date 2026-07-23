@@ -2,6 +2,27 @@
 
 All notable changes to WeatherPOC2 are recorded here. The **why** matters as much as the **what**.
 
+## [Unreleased] - 2026-07-23
+
+### Added
+- **Weather Condition Mapper** (`WeatherPoc2.Core`) — a pure, deterministic `WeatherConditionMapper`
+  whose `Map(weatherCode, isDay)` collapses Open-Meteo's numeric WMO weather codes onto the curated
+  `WeatherCondition` enum and returns a `WeatherConditionResult` (condition, display name,
+  icon-asset key, and a `Recognized` flag). Icon keys come from the new `WeatherIconKeys` — the
+  single source of truth for the finite 15-key icon-asset set (four conditions carry day/night
+  variants, six a single icon, plus the neutral `unknown`). The component does no I/O and no logging
+  so it stays trivially unit-testable; a caller logs the lenient fall-back.
+  - **Lenient fall-back, fail-visible at the caller** — an unlisted or `null` WMO code maps to
+    `WeatherCondition.Unknown` (icon `unknown`) with `Recognized: false`, and a `null` `is_day`
+    selects the day variant. The mapper never throws on unexpected input; it surfaces the
+    unrecognized case via the `Recognized` flag so the caller can log it (Technical-Context
+    Overriding Principle 1, fail-visible), rather than swallowing it silently.
+  - **Freezing precipitation folds into Snow** — WMO 56/57 (freezing drizzle) and 66/67 (freezing
+    rain) map to `Snow`, a deliberate curation of the WMO table onto the app's small condition set.
+  - Covered by `WeatherConditionMapperTests` (every WMO code → condition, day/night icon selection,
+    unknown/null fall-back, display names) and `WeatherIconKeysTests` (the icon-key set is exactly
+    the 15 declared keys), Tier-1 and $0.
+
 ## [Unreleased] - 2026-07-22
 
 ### Added
