@@ -27,6 +27,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 15 self-authored weather-condition icons (one per WeatherIconKeys member). The resizetizer
+         rasterizes each SVG to a PNG resolvable at runtime as "{key}.png" by CurrentConditionsPage's
+         Image.Source binding (Spec Seam 2). Every declared key has a source SVG here — guarded
+         per-commit by WeatherIconAssetsTests (Seam 2 (c-1)(ii)). -->
+    <MauiImage Include="Resources/Images/*.svg" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Explicit since .NET 8: UseMaui no longer implicitly references the MAUI NuGet packages
          (warning MA002). Without this the Windows build fails (e.g. ILoggingBuilder.AddDebug missing).
          Surfaced by the HITL platform-verification story (#38). -->
