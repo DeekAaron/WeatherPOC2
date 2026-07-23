@@ -94,6 +94,26 @@ Built so far:
   `WeatherCondition` set with a display name and a day/night icon-asset key from the fixed 15-key
   `WeatherIconKeys.All` set; freezing-precipitation codes (56/57/66/67) fold into Snow, and an
   unlisted or null code returns `Unknown` with `Recognized: false` (the caller logs the fallback).
+  Core also carries the **Location Search ViewModel and its two supporting seams** (Story #65 —
+  the ViewModel and orchestration only; the App-head search screen, its DI registration, and the
+  `INavigator` implementation are **not** built yet). `LocationSearchViewModel`
+  (`WeatherPoc2.Core.ViewModels`, CommunityToolkit.Mvvm) exposes `Query`, an observable
+  `Candidates` collection, and `StatusMessage`/`ErrorMessage`, with a `SearchCommand` that no-ops on
+  a blank/whitespace query, calls `IWeatherGateway.SearchAsync`, shows the fixed "No matching places
+  found" status on an empty result (screen stays put), and on `LocationSearchUnavailableException`
+  clears candidates and surfaces the fixed friendly copy ("Couldn't reach the search service — check
+  your connection and try again.") — fail-visible, the Gateway already logged the detail. Its
+  `SelectCandidateCommand` mints a `Location` from the picked `SearchCandidate`
+  (lat/lon/`Label`/`Id`→`OpenMeteoId`), sets the shared holder, **then** navigates — the Seam-2
+  ordering so Current Conditions reads a non-null `Current` on appearing. `ILoadedLocation` /
+  `LoadedLocation` (`WeatherPoc2.Core.Weather`) is the in-memory holder of the one currently-loaded
+  Location (`Current` nullable, `Set(location)`) — intended as a shared singleton, nothing persisted
+  (Feature 3 scope), so `Current` is null again every launch. `INavigator`
+  (`WeatherPoc2.Core.Navigation`) is the MVVM navigation abstraction (`GoToCurrentConditionsAsync`,
+  `GoToSearchAsync`) that keeps the ViewModels MAUI-free (Overriding Principle 2) — the App head will
+  implement it over Shell routing. Covered by `LocationSearchViewModelTests` (hits/no-match/error/
+  blank-query, and the mint→set→navigate ordering red-guarded with `Received.InOrder`) and
+  `LoadedLocationTests` (Tier-1, $0). Not yet registered in `AddWeatherPoc2Core`.
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -113,5 +133,7 @@ runner cannot build either desktop head), so the automated suite is Core Tier-1 
 (every commit) plus the single Tier-2 live drift guard (scheduled, never per-commit). No pipeline or
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
 the Feature's CI setup. The remaining domain modules from `PRD.md` (Hourly Forecast, Location Search —
-its Gateway geocoding seam is built, but the search screen and its ViewModel are not — Search History,
-Favourites, Units, persistence, launch resolver) are not built yet.
+its Gateway geocoding seam and its `LocationSearchViewModel` (plus the `ILoadedLocation` holder and
+`INavigator` abstraction) are built, but the search screen, the DI wiring for those types, and the
+`INavigator` Shell implementation are not — Search History, Favourites, Units, persistence, launch
+resolver) are not built yet.

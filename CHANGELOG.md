@@ -5,6 +5,38 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-23
 
 ### Added
+- **Location Search ViewModel + its two supporting seams** (Story #65) — the orchestration half of the
+  Location Search screen. This story delivers Core-side logic only: `LocationSearchViewModel`, the
+  in-memory loaded-Location holder, and a MAUI-free navigation abstraction. The App-head search screen
+  itself, the DI registration for the new types, and the navigation implementation are deliberately
+  **not** in this story — the ViewModel is unit-testable now without a MAUI SDK on the AFK runner.
+  - **`LocationSearchViewModel`** (`WeatherPoc2.Core.ViewModels`, CommunityToolkit.Mvvm) — `Query`, an
+    observable `Candidates` collection, and `StatusMessage`/`ErrorMessage`. `SearchCommand` no-ops on a
+    blank/whitespace query (no wasted call), else calls `IWeatherGateway.SearchAsync`; an empty result
+    shows the fixed "No matching places found" status and keeps the screen put (PRD req 25), while a
+    `LocationSearchUnavailableException` clears candidates and surfaces the fixed friendly copy
+    ("Couldn't reach the search service — check your connection and try again.") — fail-visible, since
+    the Gateway already logged the diagnostic detail (Technical-Context Overriding Principle 1). This is
+    what lets the screen render "no such place" and "couldn't reach the service" as distinct outcomes.
+  - **`ILoadedLocation` / `LoadedLocation`** (`WeatherPoc2.Core.Weather`) — the in-memory holder of the
+    one currently-loaded Location (`Current` nullable, `Set(location)`), Context.MD's "the loaded
+    Location" that Search History and Favourites will later key on. Intended as a shared singleton so
+    the search flow and Current Conditions see one instance; nothing is persisted (Feature 3 scope), so
+    `Current` is null again on every launch (the brand-new-user launch state).
+  - **`INavigator`** (`WeatherPoc2.Core.Navigation`) — the navigation abstraction
+    (`GoToCurrentConditionsAsync`, `GoToSearchAsync`) the ViewModels request without depending on MAUI,
+    so they stay unit-testable (Overriding Principle 2, MVVM-only). The app head will implement it over
+    Shell routing in a later story.
+  - **Select → mint → set → navigate ordering (Seam 2)** — `SelectCandidateCommand` mints a `Location`
+    from the picked `SearchCandidate` (coordinates, `Label`, and `Id`→`OpenMeteoId`), sets the holder,
+    **then** navigates. The ordering is the contract, not incidental: Current Conditions reads
+    `ILoadedLocation.Current` on appearing, so a navigate-before-set reorder would show it a null
+    Location. `LocationSearchViewModelTests` red-guards the order itself with `Received.InOrder`, not
+    just the end state.
+  - Covered by `LocationSearchViewModelTests` (hits, no-match, transport-error, blank-query, and the
+    mint/set/navigate ordering) and `LoadedLocationTests` (null-before-load, set-then-read). Tier-1, $0,
+    every commit. No new packages (NSubstitute and CommunityToolkit.Mvvm were already in use).
+
 - **Geocoding search seam** (Story #64) — the second half of the Open-Meteo Gateway boundary the PRD
   always described (`Search(name)` → Search Candidates), now built. `IWeatherGateway` gains
   `SearchAsync(name, ct)` returning `IReadOnlyList<SearchCandidate>`, and `OpenMeteoGateway` implements it
