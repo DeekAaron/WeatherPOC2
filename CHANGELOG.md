@@ -5,6 +5,21 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-23
 
 ### Added
+- **Current Conditions Layout C panel + bundled weather icon assets** (Story #57) — the App-head
+  presentation slice. `Views/CurrentConditionsPage` becomes the Layout C panel: a weather `Image`
+  (bound to `IconSource`) + `ConditionText` + `TemperatureDisplay` header grid above stacked
+  `ChanceOfRainDisplay` / `WindSpeedDisplay` rows, keeping all state in the ViewModel (MVVM-only,
+  no code-behind logic added).
+  - **15 self-authored SVG icons** land under `src/WeatherPoc2.App/Resources/Images/` — one per
+    `WeatherIconKeys` member — registered with a `<MauiImage Include="Resources/Images/*.svg" />`
+    glob so the resizetizer rasterizes each to a `{key}.png` the `Image.Source` binding resolves at
+    runtime. Self-authored (not third-party) keeps the asset set license-clean and exactly aligned
+    to the mapper's key set.
+  - **Per-commit icon-asset guard** — `WeatherIconAssetsTests` asserts every declared
+    `WeatherIconKeys.All` key has a matching source SVG in the tree. It is pure source-tree file I/O
+    with no MAUI SDK dependency, so it runs in the Tier-1 per-commit suite ($0) on the AFK runner that
+    cannot build a desktop head; actual build/rasterization/render proof stays deferred to the HITL
+    platform-verification story (Spec Seam 2/4).
 - **Current Conditions ViewModel mapper wiring + DI registration** (Story #56) — joins the two prior
   slices into displayable state. `CurrentConditionsViewModel` gains a `WeatherConditionMapper` ctor
   dependency (alongside F1's `IWeatherGateway` + `ILogger`) and four new display properties —

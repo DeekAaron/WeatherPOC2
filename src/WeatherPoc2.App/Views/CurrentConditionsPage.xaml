@@ -5,9 +5,24 @@
              x:Class="WeatherPoc2.App.Views.CurrentConditionsPage"
              x:DataType="vm:CurrentConditionsViewModel"
              Title="Weather">
-    <VerticalStackLayout Padding="24" Spacing="16" VerticalOptions="Center" HorizontalOptions="Center">
+    <VerticalStackLayout Padding="24" Spacing="16">
         <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" />
-        <Label Text="{Binding TemperatureDisplay}" FontSize="48" HorizontalOptions="Center" />
+
+        <!-- header: icon + condition + temperature -->
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14" VerticalOptions="Center">
+            <Image Grid.Column="0" Source="{Binding IconSource}" HeightRequest="56" WidthRequest="56" />
+            <Label Grid.Column="1" Text="{Binding ConditionText}" VerticalOptions="Center" FontSize="18" />
+            <Label Grid.Column="2" Text="{Binding TemperatureDisplay}" VerticalOptions="Center" FontSize="40" />
+        </Grid>
+
+        <!-- stacked measures -->
+        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="10">
+            <Label Grid.Row="0" Grid.Column="0" Text="Chance of rain" />
+            <Label Grid.Row="0" Grid.Column="1" Text="{Binding ChanceOfRainDisplay}" />
+            <Label Grid.Row="1" Grid.Column="0" Text="Wind speed" />
+            <Label Grid.Row="1" Grid.Column="1" Text="{Binding WindSpeedDisplay}" />
+        </Grid>
+
         <Label Text="{Binding ErrorMessage}" TextColor="Red" HorizontalOptions="Center" />
     </VerticalStackLayout>
 </ContentPage>

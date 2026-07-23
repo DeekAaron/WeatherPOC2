@@ -79,9 +79,17 @@ Built so far:
   unlisted or null code returns `Unknown` with `Recognized: false` (the caller logs the fallback).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
-  routing to a single Current Conditions page, and `Views/CurrentConditionsPage` binding
-  `IsLoading`/`TemperatureDisplay`/`ErrorMessage` and firing `LoadCommand` on `OnAppearing`
-  (MVVM-only). Targets `net10.0-maccatalyst` always; the Windows TFM is built only on a Windows host.
+  routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
+  panel**: an `Image` (`IconSource`) + condition (`ConditionText`) + temperature (`TemperatureDisplay`)
+  header grid above stacked `ChanceOfRainDisplay` / `WindSpeedDisplay` rows, plus the `IsLoading`
+  indicator and `ErrorMessage`, firing `LoadCommand` on `OnAppearing` (MVVM-only, no code-behind
+  logic). The 15 weather-condition icons are self-authored SVGs under `Resources/Images/` (one per
+  `WeatherIconKeys` member) registered via a `MauiImage` glob; the resizetizer rasterizes each to a
+  `{key}.png` the `Image.Source` binding resolves at runtime. `WeatherIconAssetsTests` (in
+  `WeatherPoc2.Core.Tests`) is the per-commit Tier-1 guard — pure source-tree file I/O, no MAUI SDK —
+  asserting every declared `WeatherIconKeys.All` key has a matching source SVG; build/rasterization/
+  render stay deferred to the HITL platform-verification story. Targets `net10.0-maccatalyst` always;
+  the Windows TFM is built only on a Windows host.
 
 The desktop build/launch verification is deferred to a HITL platform-verification story (the AFK
 runner cannot build either desktop head), so the automated suite is Core Tier-1 recorded-replay
