@@ -89,13 +89,39 @@ public sealed class OpenMeteoGateway : IWeatherGateway
             throw new WeatherUnavailableException($"Open-Meteo returned unexpected unit '{unit}' (expected °C)");
         }
 
-        // wind (happy path — value read; the unit assertion + missing-field guard land in Task 4)
-        var windKmh = parsed.Current!.WindSpeed10m!.Value;
+        // wind unit — belt-and-suspenders, mirrors F1's °C assertion
+        var windUnit = parsed.CurrentUnits?.WindSpeed10m;
+        if (!string.Equals(windUnit, "km/h", StringComparison.Ordinal))
+        {
+            _logger.LogError("Open-Meteo GetWeather {Label} {Endpoint} → unexpected wind unit {Unit} (expected km/h)",
+                location.Label, url, windUnit);
+            throw new WeatherUnavailableException($"Open-Meteo returned unexpected wind unit '{windUnit}' (expected km/h)");
+        }
 
-        // current-hour chance of rain (happy path): truncate current.time to the hour, find it in hourly.time[]
-        var hourKey = parsed.Current.Time![..13] + ":00";                 // "2026-07-22T17:30" -> "2026-07-22T17:00"
-        var idx = Array.IndexOf(parsed.Hourly!.Time!, hourKey);
-        var chanceOfRain = parsed.Hourly.PrecipitationProbability![idx]!.Value;
+        if (parsed.Current?.WindSpeed10m is not double windKmh)
+        {
+            _logger.LogError("Open-Meteo GetWeather {Label} {Endpoint} → missing wind_speed_10m", location.Label, url);
+            throw new WeatherUnavailableException("Open-Meteo response missing wind_speed_10m");
+        }
+
+        // current-hour chance of rain (strict): truncate current.time to the hour, find it in hourly.time[],
+        // read the parallel precipitation_probability[] at that index. An absent series, an unmatched hour,
+        // a mismatched-length probability array, or a null probability all fail closed (0 is a valid value).
+        var currentTime = parsed.Current.Time;
+        var hourlyTimes = parsed.Hourly?.Time;
+        var hourlyProbs = parsed.Hourly?.PrecipitationProbability;
+        if (currentTime is null || currentTime.Length < 13 || hourlyTimes is null || hourlyProbs is null)
+        {
+            _logger.LogError("Open-Meteo GetWeather {Label} {Endpoint} → hourly precipitation series unavailable", location.Label, url);
+            throw new WeatherUnavailableException("Open-Meteo hourly precipitation series unavailable");
+        }
+        var hourKey = currentTime[..13] + ":00";                          // "2026-07-22T17:30" -> "2026-07-22T17:00"
+        var idx = Array.IndexOf(hourlyTimes, hourKey);
+        if (idx < 0 || idx >= hourlyProbs.Length || hourlyProbs[idx] is not int chanceOfRain)
+        {
+            _logger.LogError("Open-Meteo GetWeather {Label} {Endpoint} → no precipitation probability for {Hour}", location.Label, url, hourKey);
+            throw new WeatherUnavailableException("Open-Meteo has no current-hour precipitation probability");
+        }
 
         // lenient icon-only hints — flow through; the mapper (in the VM) resolves Unknown / day
         int? weatherCode = parsed.Current.WeatherCode;
