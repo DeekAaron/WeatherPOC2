@@ -23,7 +23,10 @@ public sealed class OpenMeteoGateway : IWeatherGateway
     {
         var lat = location.Latitude.ToString(CultureInfo.InvariantCulture);
         var lon = location.Longitude.ToString(CultureInfo.InvariantCulture);
-        var url = $"{BaseUrl}?latitude={lat}&longitude={lon}&current=temperature_2m&temperature_unit=celsius";
+        var url = $"{BaseUrl}?latitude={lat}&longitude={lon}" +
+                  "&current=temperature_2m,wind_speed_10m,weather_code,is_day" +
+                  "&hourly=precipitation_probability" +
+                  "&temperature_unit=celsius&wind_speed_unit=kmh";
 
         var client = _httpClientFactory.CreateClient(HttpClientName);
         // Log the endpoint (URL) + outcome — Technical-Context Instrumentation contract.
@@ -86,8 +89,20 @@ public sealed class OpenMeteoGateway : IWeatherGateway
             throw new WeatherUnavailableException($"Open-Meteo returned unexpected unit '{unit}' (expected °C)");
         }
 
+        // wind (happy path — value read; the unit assertion + missing-field guard land in Task 4)
+        var windKmh = parsed.Current!.WindSpeed10m!.Value;
+
+        // current-hour chance of rain (happy path): truncate current.time to the hour, find it in hourly.time[]
+        var hourKey = parsed.Current.Time![..13] + ":00";                 // "2026-07-22T17:30" -> "2026-07-22T17:00"
+        var idx = Array.IndexOf(parsed.Hourly!.Time!, hourKey);
+        var chanceOfRain = parsed.Hourly.PrecipitationProbability![idx]!.Value;
+
+        // lenient icon-only hints — flow through; the mapper (in the VM) resolves Unknown / day
+        int? weatherCode = parsed.Current.WeatherCode;
+        bool? isDay = parsed.Current.IsDay switch { 1 => true, 0 => false, _ => null };
+
         _logger.LogInformation("Open-Meteo GetWeather {Label} {Endpoint} → {Status}", location.Label, url, (int)response.StatusCode);
-        return new WeatherBundle(temperatureCelsius);
+        return new WeatherBundle(temperatureCelsius, windKmh, chanceOfRain, weatherCode, isDay);
     }
 
     private sealed class OpenMeteoResponse
@@ -96,15 +111,27 @@ public sealed class OpenMeteoGateway : IWeatherGateway
         [JsonPropertyName("reason")] public string? Reason { get; init; }
         [JsonPropertyName("current")] public CurrentDto? Current { get; init; }
         [JsonPropertyName("current_units")] public CurrentUnitsDto? CurrentUnits { get; init; }
+        [JsonPropertyName("hourly")] public HourlyDto? Hourly { get; init; }
     }
 
     private sealed class CurrentDto
     {
+        [JsonPropertyName("time")] public string? Time { get; init; }
         [JsonPropertyName("temperature_2m")] public double? Temperature2m { get; init; }
+        [JsonPropertyName("wind_speed_10m")] public double? WindSpeed10m { get; init; }
+        [JsonPropertyName("weather_code")] public int? WeatherCode { get; init; }
+        [JsonPropertyName("is_day")] public int? IsDay { get; init; }
     }
 
     private sealed class CurrentUnitsDto
     {
         [JsonPropertyName("temperature_2m")] public string? Temperature2m { get; init; }
+        [JsonPropertyName("wind_speed_10m")] public string? WindSpeed10m { get; init; }
+    }
+
+    private sealed class HourlyDto
+    {
+        [JsonPropertyName("time")] public string[]? Time { get; init; }
+        [JsonPropertyName("precipitation_probability")] public int?[]? PrecipitationProbability { get; init; }
     }
 }

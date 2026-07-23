@@ -210,4 +210,55 @@ public class OpenMeteoGatewayTests
         await Assert.ThrowsAsync<WeatherUnavailableException>(
             () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
     }
+
+    // ---- Feature 2: the widened Current Conditions bundle (Story #55, Plan Task 3) ----
+
+    [Fact]
+    public async Task GetWeatherAsync_maps_the_full_current_conditions_from_a_200_body()
+    {
+        // The widened bundle carries every Current Conditions measure: Temperature and Wind Speed in
+        // canonical units, the current hour's Chance of Rain (from the matched hourly entry), plus the
+        // raw weather_code / is_day hints the mapper resolves downstream.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-conditions-london-200.json"));
+        var gateway = GatewayWith(handler);
+
+        var bundle = await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        Assert.Equal(26.5, bundle.CurrentTemperatureCelsius);
+        Assert.Equal(12.6, bundle.CurrentWindSpeedKmh);
+        Assert.Equal(0, bundle.CurrentChanceOfRainPercent);   // current hour 17:00's precip probability
+        Assert.Equal(3, bundle.CurrentWeatherCode);
+        Assert.True(bundle.IsDay);
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_requests_the_new_current_and_hourly_fields()
+    {
+        // The widened request must ask Open-Meteo for wind speed, the icon-only hints, and the hourly
+        // precipitation series — and pin BOTH canonical units explicitly (never rely on API defaults).
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-conditions-london-200.json"));
+        var gateway = GatewayWith(handler);
+
+        await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        var url = handler.LastRequest?.RequestUri?.ToString();
+        Assert.NotNull(url);
+        Assert.Contains("current=temperature_2m,wind_speed_10m,weather_code,is_day", url);
+        Assert.Contains("hourly=precipitation_probability", url);
+        Assert.Contains("wind_speed_unit=kmh", url);
+        Assert.Contains("temperature_unit=celsius", url);
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_matches_the_current_hour_by_truncating_minutes()
+    {
+        // Chance of Rain is an hourly measure (Context.MD): current.time "…T17:30" must match the
+        // top-of-hour hourly entry "…T17:00" — not 16:00's 5 or 18:00's 10.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-conditions-london-200.json"));
+        var gateway = GatewayWith(handler);
+
+        var bundle = await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        Assert.Equal(0, bundle.CurrentChanceOfRainPercent);
+    }
 }
