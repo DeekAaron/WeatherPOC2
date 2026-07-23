@@ -63,7 +63,10 @@ Built so far:
   fixed friendly copy is surfaced. Tested by the
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
-  and relies on the Gateway's °C unit assertion to prove the live response is in canonical units.
+  asserting the full widened `WeatherBundle` deserializes (temperature, wind speed, current-hour chance
+  of rain); because the widened Gateway already asserts both the °C and km/h unit pins and resolves the
+  current hour in `hourly.time[]`, a returned full bundle is itself the unit-aware + current-hour
+  assertion (the `InRange` checks are sanity bands atop that guarantee).
   `WeatherBundle` now carries the **full Current Conditions payload** — Temperature and Wind Speed in
   canonical units (°C, km/h) and the current-hour Chance of Rain as strict fail-closed measures, plus
   the nullable `CurrentWeatherCode`/`IsDay` icon hints — and the Gateway widens its request

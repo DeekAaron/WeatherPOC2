@@ -17,18 +17,21 @@ namespace WeatherPoc2.Core.Tests;
 public class LiveOpenMeteoTests
 {
     [Fact]
-    public async Task Live_London_fetch_returns_a_celsius_bundle()
+    public async Task Live_London_fetch_returns_a_full_current_conditions_bundle()
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient());
         var gateway = new OpenMeteoGateway(factory, NullLogger<OpenMeteoGateway>.Instance);
 
-        // The call succeeding IS the unit-aware assertion: the Gateway throws
-        // WeatherUnavailableException unless current_units.temperature_2m == "°C",
-        // so a returned bundle proves the live response is in Celsius — a server-side
-        // unit-default change would fail here, not pass a loose plausibility band.
+        // The call succeeding IS the unit-aware + current-hour assertion: the widened Gateway throws
+        // WeatherUnavailableException unless current_units.temperature_2m == "°C" AND
+        // current_units.wind_speed_10m == "km/h" AND the current hour resolves in hourly.time[] with a
+        // non-null precipitation_probability. A returned full bundle therefore proves the live response
+        // still matches the captured-fixture contract; a server-side unit/shape drift fails here.
         var bundle = await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
 
-        Assert.InRange(bundle.CurrentTemperatureCelsius, -60.0, 60.0); // sanity band on top of the unit guarantee
+        Assert.InRange(bundle.CurrentTemperatureCelsius, -60.0, 60.0); // sanity band atop the unit guarantee
+        Assert.InRange(bundle.CurrentWindSpeedKmh, 0.0, 500.0);
+        Assert.InRange(bundle.CurrentChanceOfRainPercent, 0, 100);
     }
 }
