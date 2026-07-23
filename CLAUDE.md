@@ -53,7 +53,14 @@ Built so far:
   `WeatherUnavailableException`, `Location`, `WeatherBundle`), the `CurrentConditionsViewModel`
   (CommunityToolkit.Mvvm, fetch-on-load for `Location.LondonGb`, friendly fail-visible error), and
   the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
-  15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, transient ViewModel). Tested by the
+  15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, singleton `WeatherConditionMapper`,
+  transient ViewModel). The ViewModel now composes the widened `WeatherBundle` and the
+  `WeatherConditionMapper` (a third ctor dependency alongside `IWeatherGateway` + `ILogger`) into the
+  full displayable panel — `TemperatureDisplay`, `ChanceOfRainDisplay`, `WindSpeedDisplay`,
+  `ConditionText`, and `IconSource` (`{iconKey}.png`) — mapping `CurrentWeatherCode`/`IsDay` on
+  success and logging a Warning on each lenient fall-back (unrecognized/absent code, null `is_day`);
+  on `WeatherUnavailableException` all five displays are cleared (no stale/partial panel) and only the
+  fixed friendly copy is surfaced. Tested by the
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
   and relies on the Gateway's °C unit assertion to prove the live response is in canonical units.
