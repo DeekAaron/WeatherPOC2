@@ -24,6 +24,11 @@ Early build. Delivered so far:
   Current Conditions page which fetches London's temperature on launch (fetch-on-load is the only
   refresh trigger for now) and renders it, or a friendly error, via MVVM bindings. Targets Mac
   Catalyst always, with the Windows head built only on a Windows host.
+- **Weather Condition Mapper** — a pure, deterministic Core component (`WeatherConditionMapper`)
+  that collapses Open-Meteo's numeric WMO weather codes (plus the `is_day` flag) onto the app's
+  curated `WeatherCondition` set, each carrying a human display name and a day/night icon-asset key
+  drawn from the fixed 15-key `WeatherIconKeys` set. It does no I/O and no logging; an unrecognized
+  or absent code falls back to `Unknown` and is flagged `Recognized: false` for the caller to log.
 
 The remaining domain modules (Hourly Forecast, Location Search, Search History, Favourites, Units,
 persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
