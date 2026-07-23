@@ -34,4 +34,18 @@ public class LiveOpenMeteoTests
         Assert.InRange(bundle.CurrentWindSpeedKmh, 0.0, 500.0);
         Assert.InRange(bundle.CurrentChanceOfRainPercent, 0, 100);
     }
+
+    [Fact]
+    public async Task Live_London_geocoding_returns_candidates()
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient());
+        var gateway = new OpenMeteoGateway(factory, NullLogger<OpenMeteoGateway>.Instance);
+
+        var candidates = await gateway.SearchAsync("London", CancellationToken.None);
+
+        // A live "London" search must resolve real places; the GB result must be among them.
+        Assert.NotEmpty(candidates);
+        Assert.Contains(candidates, c => c.Name == "London" && c.Country == "United Kingdom");
+    }
 }
