@@ -11,11 +11,16 @@ full product requirements and `Roadmap.md` for the Feature breakdown.
 
 Early build. Delivered so far:
 
-- **`WeatherPoc2.Core`** — the Open-Meteo weather seam: `OpenMeteoGateway` fetches the current
-  temperature for a Location and converts **every** failure (transport/timeout, oversized response,
-  unparseable body, `error:true` body, non-200 status, missing `temperature_2m`, or a non-°C unit)
+- **`WeatherPoc2.Core`** — the Open-Meteo weather seam: `OpenMeteoGateway` fetches the full Current
+  Conditions bundle for a Location — Temperature and Wind Speed in canonical units (°C, km/h) and the
+  current hour's Chance of Rain, plus the raw `weather_code`/`is_day` icon hints — and converts
+  **every** failure (transport/timeout, oversized response, unparseable body, `error:true` body,
+  non-200 status; a missing or non-°C temperature, a missing wind speed or non-km/h wind unit, or a
+  current-hour Chance of Rain that is unmatched, null, or backed by a mismatched-length hourly array)
   into the typed `WeatherUnavailableException`, always after logging the endpoint and outcome — so a
-  partial, fabricated, or wrong-unit reading never reaches the app. Core also carries the
+  partial, fabricated, or wrong-unit reading never reaches the app. The icon hints are lenient: an
+  absent `weather_code`/`is_day` flows through as `null` (resolved downstream by the mapper) rather
+  than failing the fetch. Core also carries the
   `CurrentConditionsViewModel` (CommunityToolkit.Mvvm) and the OS-agnostic `AddWeatherPoc2Core` DI
   extension (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway,
   transient ViewModel).

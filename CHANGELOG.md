@@ -5,6 +5,29 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-23
 
 ### Added
+- **Widened Current Conditions at the Gateway seam** (Story #55) — `OpenMeteoGateway` now requests the
+  full Current Conditions payload (`current=temperature_2m,wind_speed_10m,weather_code,is_day`,
+  `hourly=precipitation_probability`) and pins **both** canonical units explicitly on the wire
+  (`temperature_unit=celsius&wind_speed_unit=kmh`, never relying on API defaults), and `WeatherBundle`
+  is **extended, not reshaped** — it gains `CurrentWindSpeedKmh`, `CurrentChanceOfRainPercent`, and the
+  nullable `CurrentWeatherCode`/`IsDay` icon hints alongside F1's `CurrentTemperatureCelsius`. The
+  `IWeatherGateway` signature is unchanged, so F1's contract is preserved.
+  - **Strict numeric measures fail closed** — wind speed plus a new `current_units.wind_speed_10m == "km/h"`
+    assertion (belt-and-suspenders, mirroring F1's °C pin so the km/h guarantee is proven on the wire),
+    and the current-hour Chance of Rain: `current.time` is truncated to the top of the hour, matched
+    exactly against `hourly.time[]`, and the parallel `precipitation_probability[]` read at that index.
+    An absent series, an unmatched hour, or a null probability throws `WeatherUnavailableException` after
+    an Error log — `0` is a valid probability, never a fallback.
+  - **Lenient icon hints flow through** — absent/null `weather_code` / `is_day` do not fail the fetch;
+    they land as nullable bundle fields the Weather Condition Mapper resolves downstream (Unknown / day).
+  - **Array-bounds safety on the untrusted parallel read** (security acceptance criterion) — the resolved
+    current-hour index is guarded against `precipitation_probability[].Length`, so a degenerate Open-Meteo
+    response whose `hourly.time[]` outruns its probability array fails closed with
+    `WeatherUnavailableException` rather than an unhandled `IndexOutOfRangeException`.
+  - Covered by widened Tier-1 recorded-replay fixtures and gateway tests (full-bundle mapping, the widened
+    request string, minute-truncation hour match, and each strict failure path including the
+    mismatched-array bounds guard); F1's existing gateway tests still pass. $0, every commit.
+
 - **Weather Condition Mapper** (`WeatherPoc2.Core`) — a pure, deterministic `WeatherConditionMapper`
   whose `Map(weatherCode, isDay)` collapses Open-Meteo's numeric WMO weather codes onto the curated
   `WeatherCondition` enum and returns a `WeatherConditionResult` (condition, display name,

@@ -57,6 +57,13 @@ Built so far:
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
   and relies on the Gateway's °C unit assertion to prove the live response is in canonical units.
+  `WeatherBundle` now carries the **full Current Conditions payload** — Temperature and Wind Speed in
+  canonical units (°C, km/h) and the current-hour Chance of Rain as strict fail-closed measures, plus
+  the nullable `CurrentWeatherCode`/`IsDay` icon hints — and the Gateway widens its request
+  accordingly (`current=temperature_2m,wind_speed_10m,weather_code,is_day&hourly=precipitation_probability`,
+  both units pinned on the wire), asserts the km/h unit alongside the °C pin, matches the current-hour
+  precipitation by top-of-hour truncation, and fails closed (never `IndexOutOfRangeException`) on a
+  mismatched-length hourly array; the `IWeatherGateway` signature is unchanged.
   Core also carries the pure **Weather Condition Mapper** (`WeatherConditionMapper`,
   `WeatherConditionResult`, the `WeatherCondition` enum, and `WeatherIconKeys`) — a deterministic,
   I/O-free `Map(weatherCode, isDay)` that collapses Open-Meteo's numeric WMO codes onto the curated
