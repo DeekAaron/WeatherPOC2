@@ -26,21 +26,24 @@ Early build. Delivered so far:
   (a plain "no matching places", not an error) and converting every failure into the typed
   `LocationSearchUnavailableException` after logging — so the app can tell "no such place" apart from
   "couldn't reach the service". Core also carries the
-  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), which composes the bundle and the Weather
-  Condition Mapper into the full displayable panel — temperature, chance of rain, wind speed,
+  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), which fetches for the currently loaded
+  Location — read from the shared `ILoadedLocation` holder rather than a hard-coded constant, and
+  no-ops when nothing is loaded yet (launch shows search first) — and composes the bundle and the
+  Weather Condition Mapper into the full displayable panel — temperature, chance of rain, wind speed,
   condition text, and a day/night icon — or, on failure, clears every field and shows one friendly
-  error. The OS-agnostic `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
-  15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
+  error. It also exposes an `OpenSearch` command that routes to the search screen via `INavigator`.
+  The OS-agnostic `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
+  15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, singleton
+  `ILoadedLocation`, and transient `CurrentConditionsViewModel` + `LocationSearchViewModel`).
   Core also carries the **`LocationSearchViewModel`** — search, no-match and error handling, and
   select-a-candidate → mint a `Location` → set the shared loaded-Location holder → navigate — over two
   small MAUI-free seams it introduces: `ILoadedLocation` (an in-memory holder of the one currently
   loaded Location, no persistence yet) and `INavigator` (a navigation abstraction the app head will
-  implement over Shell). The search screen itself, the DI registration for these types, and the
-  `INavigator` implementation are not built yet.
+  implement over Shell). The search screen itself and the `INavigator` implementation are not built yet.
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
-  Current Conditions page which fetches London's conditions on launch (fetch-on-load is the only
-  refresh trigger for now) and renders the Layout C panel — a weather icon, condition text and
+  Current Conditions page which fetches the currently loaded Location's conditions on appearing
+  (fetch-on-load is the only refresh trigger for now) and renders the Layout C panel — a weather icon, condition text and
   temperature header above stacked chance-of-rain and wind-speed rows — or a friendly error, via
   MVVM bindings. The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/`
   (one per `WeatherIconKeys` member, registered as `MauiImage` and rasterized to `{key}.png` at
@@ -53,7 +56,7 @@ Early build. Delivered so far:
   or absent code falls back to `Unknown` and is flagged `Recognized: false` for the caller to log.
 
 The remaining domain modules (Hourly Forecast, Location Search — its Gateway geocoding seam and
-`LocationSearchViewModel` are built, but the search screen, its DI wiring, and the `INavigator`
+`LocationSearchViewModel` are built and registered in DI, but the search screen and the `INavigator`
 implementation are not — Search History, Favourites, Units, persistence, launch resolver) are not
 built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a

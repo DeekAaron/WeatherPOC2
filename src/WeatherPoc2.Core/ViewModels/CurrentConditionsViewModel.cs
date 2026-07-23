@@ -2,6 +2,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using WeatherPoc2.Core.Navigation;
 using WeatherPoc2.Core.Weather;
 
 namespace WeatherPoc2.Core.ViewModels;
@@ -12,16 +13,22 @@ public sealed partial class CurrentConditionsViewModel : ObservableObject
         "Couldn't reach the weather service — check your connection and try again.";
 
     private readonly IWeatherGateway _gateway;
+    private readonly ILoadedLocation _loadedLocation;
     private readonly WeatherConditionMapper _mapper;
+    private readonly INavigator _navigator;
     private readonly ILogger<CurrentConditionsViewModel> _logger;
 
     public CurrentConditionsViewModel(
         IWeatherGateway gateway,
+        ILoadedLocation loadedLocation,
         WeatherConditionMapper mapper,
+        INavigator navigator,
         ILogger<CurrentConditionsViewModel> logger)
     {
         _gateway = gateway;
+        _loadedLocation = loadedLocation;
         _mapper = mapper;
+        _navigator = navigator;
         _logger = logger;
     }
 
@@ -36,11 +43,16 @@ public sealed partial class CurrentConditionsViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
+        // Feature 3: the Location now comes from the loaded-Location holder, not the constant.
+        var location = _loadedLocation.Current;
+        if (location is null)
+            return; // launch always shows search first; nothing to fetch (Seam 2 defensive path)
+
         IsLoading = true;
         ErrorMessage = null;
         try
         {
-            var bundle = await _gateway.GetWeatherAsync(Location.LondonGb, cancellationToken);
+            var bundle = await _gateway.GetWeatherAsync(location, cancellationToken);
 
             TemperatureDisplay = bundle.CurrentTemperatureCelsius.ToString("0.0", CultureInfo.InvariantCulture) + " °C";
             ChanceOfRainDisplay = $"{bundle.CurrentChanceOfRainPercent}%";
@@ -74,4 +86,7 @@ public sealed partial class CurrentConditionsViewModel : ObservableObject
             IsLoading = false;
         }
     }
+
+    [RelayCommand]
+    private Task OpenSearchAsync() => _navigator.GoToSearchAsync();
 }
