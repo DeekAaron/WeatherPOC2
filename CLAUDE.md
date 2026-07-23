@@ -49,8 +49,9 @@ Stack is **.NET 10 / C#** (SDK pinned via `global.json` at `10.0.100`). Solution
 
 Built so far:
 
-- `WeatherPoc2.Core` — the Open-Meteo weather seam (`OpenMeteoGateway`, `IWeatherGateway`,
-  `WeatherUnavailableException`, `Location`, `WeatherBundle`), the `CurrentConditionsViewModel`
+- `WeatherPoc2.Core` — the Open-Meteo seam (`OpenMeteoGateway`, `IWeatherGateway`,
+  `WeatherUnavailableException`, `LocationSearchUnavailableException`, `Location`, `WeatherBundle`,
+  `SearchCandidate`), the `CurrentConditionsViewModel`
   (CommunityToolkit.Mvvm, fetch-on-load for `Location.LondonGb`, friendly fail-visible error), and
   the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
   15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, singleton `WeatherConditionMapper`,
@@ -73,7 +74,20 @@ Built so far:
   accordingly (`current=temperature_2m,wind_speed_10m,weather_code,is_day&hourly=precipitation_probability`,
   both units pinned on the wire), asserts the km/h unit alongside the °C pin, matches the current-hour
   precipitation by top-of-hour truncation, and fails closed (never `IndexOutOfRangeException`) on a
-  mismatched-length hourly array; the `IWeatherGateway` signature is unchanged.
+  mismatched-length hourly array.
+  The Gateway now also carries the **geocoding half** of the seam (Story #64): `IWeatherGateway`
+  gains `SearchAsync(name, ct)` → `IReadOnlyList<SearchCandidate>`, implemented against
+  `geocoding-api.open-meteo.com/v1/search` with a fixed `count=10&language=en&format=json` and the
+  untrusted `name` percent-encoded (`Uri.EscapeDataString`) inside the `name` value only (no
+  query-parameter injection). `SearchCandidate` (`Id`, `Name`, `Region`, `Country`, `Latitude`,
+  `Longitude`) exposes a `Label` — "Name, Region, Country", collapsing to "Name, Country" when the
+  Open-Meteo `admin1` (Region) is absent. A no-match 200 (the `results` key absent) returns an empty
+  list — never an exception — so callers tell "no matching places" from a real failure; every failure
+  mode (transport/timeout, unparseable body, non-2xx) is logged at Error with endpoint + outcome and
+  converted to the typed `LocationSearchUnavailableException` (distinct from
+  `WeatherUnavailableException`). Covered by `OpenMeteoGeocodingTests` / `SearchCandidateTests`
+  (Tier-1 recorded-replay, three geocoding fixtures) and a `LiveOpenMeteoTests` Tier-2 geocoding
+  drift guard (`Live_London_geocoding_returns_candidates`).
   Core also carries the pure **Weather Condition Mapper** (`WeatherConditionMapper`,
   `WeatherConditionResult`, the `WeatherCondition` enum, and `WeatherIconKeys`) — a deterministic,
   I/O-free `Map(weatherCode, isDay)` that collapses Open-Meteo's numeric WMO codes onto the curated
@@ -98,5 +112,6 @@ The desktop build/launch verification is deferred to a HITL platform-verificatio
 runner cannot build either desktop head), so the automated suite is Core Tier-1 recorded-replay
 (every commit) plus the single Tier-2 live drift guard (scheduled, never per-commit). No pipeline or
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
-the Feature's CI setup. The remaining domain modules from `PRD.md` (Hourly Forecast, Location Search,
-Search History, Favourites, Units, persistence, launch resolver) are not built yet.
+the Feature's CI setup. The remaining domain modules from `PRD.md` (Hourly Forecast, Location Search —
+its Gateway geocoding seam is built, but the search screen and its ViewModel are not — Search History,
+Favourites, Units, persistence, launch resolver) are not built yet.

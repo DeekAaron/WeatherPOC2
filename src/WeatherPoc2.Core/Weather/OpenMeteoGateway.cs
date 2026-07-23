@@ -9,6 +9,7 @@ public sealed class OpenMeteoGateway : IWeatherGateway
 {
     public const string HttpClientName = "OpenMeteo";
     private const string BaseUrl = "https://api.open-meteo.com/v1/forecast";
+    private const string GeocodingBaseUrl = "https://geocoding-api.open-meteo.com/v1/search";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<OpenMeteoGateway> _logger;
@@ -129,6 +130,80 @@ public sealed class OpenMeteoGateway : IWeatherGateway
 
         _logger.LogInformation("Open-Meteo GetWeather {Label} {Endpoint} → {Status}", location.Label, url, (int)response.StatusCode);
         return new WeatherBundle(temperatureCelsius, windKmh, chanceOfRain, weatherCode, isDay);
+    }
+
+    public async Task<IReadOnlyList<SearchCandidate>> SearchAsync(string name, CancellationToken cancellationToken)
+    {
+        // name is untrusted free-text — percent-encode it INSIDE the `name` value so a crafted query
+        // can neither inject an extra query parameter nor override the fixed count/format/language.
+        var url = $"{GeocodingBaseUrl}?name={Uri.EscapeDataString(name)}&count=10&language=en&format=json";
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        // Log the endpoint (URL) + outcome — Technical-Context Instrumentation contract.
+        _logger.LogInformation("Open-Meteo Search {Query} {Endpoint} → requesting", name, url);
+
+        HttpResponseMessage response;
+        string body;
+        try
+        {
+            response = await client.GetAsync(url, cancellationToken);
+            body = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // HttpRequestException = network/DNS/oversized-read; TaskCanceledException = request-timeout expiry.
+            _logger.LogError(ex, "Open-Meteo Search {Query} {Endpoint} → transport failure", name, url);
+            throw new LocationSearchUnavailableException("Open-Meteo geocoding transport failure", ex);
+        }
+
+        // Branch order mirrors GetWeatherAsync: transport → JSON → status → map.
+        GeocodingResponse? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<GeocodingResponse>(body);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Open-Meteo Search {Query} {Endpoint} → malformed response body", name, url);
+            throw new LocationSearchUnavailableException("Open-Meteo geocoding response body was not valid JSON", ex);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError("Open-Meteo Search {Query} {Endpoint} → HTTP {Status}", name, url, (int)response.StatusCode);
+            throw new LocationSearchUnavailableException($"Open-Meteo geocoding HTTP {(int)response.StatusCode}");
+        }
+
+        // No matches: the `results` key is ABSENT on a 200 (proven live 2026-07-23) → Results is null.
+        // Treat absent-or-empty as zero Candidates — never dereference a null list.
+        var results = parsed?.Results;
+        if (results is null || results.Count == 0)
+        {
+            _logger.LogInformation("Open-Meteo Search {Query} {Endpoint} → {Status}, 0 candidates", name, url, (int)response.StatusCode);
+            return Array.Empty<SearchCandidate>();
+        }
+
+        var candidates = results
+            .Select(r => new SearchCandidate(r.Id, r.Name, r.Admin1, r.Country, r.Latitude, r.Longitude))
+            .ToList();
+        _logger.LogInformation("Open-Meteo Search {Query} {Endpoint} → {Status}, {Count} candidates",
+            name, url, (int)response.StatusCode, candidates.Count);
+        return candidates;
+    }
+
+    private sealed class GeocodingResponse
+    {
+        // Absent on a no-match 200 → null. Never assume an empty array.
+        [JsonPropertyName("results")] public List<GeocodingResult>? Results { get; init; }
+    }
+
+    private sealed class GeocodingResult
+    {
+        [JsonPropertyName("id")] public int Id { get; init; }
+        [JsonPropertyName("name")] public string Name { get; init; } = string.Empty;
+        [JsonPropertyName("latitude")] public double Latitude { get; init; }
+        [JsonPropertyName("longitude")] public double Longitude { get; init; }
+        [JsonPropertyName("country")] public string Country { get; init; } = string.Empty;
+        [JsonPropertyName("admin1")] public string? Admin1 { get; init; } // region — may be absent
     }
 
     private sealed class OpenMeteoResponse
