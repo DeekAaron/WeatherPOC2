@@ -28,9 +28,13 @@ Early build. Delivered so far:
   15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
-  Current Conditions page which fetches London's temperature on launch (fetch-on-load is the only
-  refresh trigger for now) and renders it, or a friendly error, via MVVM bindings. Targets Mac
-  Catalyst always, with the Windows head built only on a Windows host.
+  Current Conditions page which fetches London's conditions on launch (fetch-on-load is the only
+  refresh trigger for now) and renders the Layout C panel — a weather icon, condition text and
+  temperature header above stacked chance-of-rain and wind-speed rows — or a friendly error, via
+  MVVM bindings. The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/`
+  (one per `WeatherIconKeys` member, registered as `MauiImage` and rasterized to `{key}.png` at
+  build), so the mapper's icon key resolves to a bundled asset at runtime. Targets Mac Catalyst
+  always, with the Windows head built only on a Windows host.
 - **Weather Condition Mapper** — a pure, deterministic Core component (`WeatherConditionMapper`)
   that collapses Open-Meteo's numeric WMO weather codes (plus the `is_day` flag) onto the app's
   curated `WeatherCondition` set, each carrying a human display name and a day/night icon-asset key
