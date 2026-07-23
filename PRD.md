@@ -155,6 +155,15 @@ paths or code are pinned here — those live in per-Feature Specs and Plans.
   ViewModels bound to Views; code-behind holds no business logic. ViewModels own the refresh policy —
   re-fetch on Location load, on window focus regain, and on explicit manual refresh — and surface all
   failures as friendly in-app copy, never swallowing them (fail-visible).
+- **Loaded-Location holder** — the shared seam through which a Location loaded on one screen becomes
+  the Location another screen reads. Holds the single currently-loaded Location; a Location Search
+  selection mints a Location, sets it here, then navigates, and Current Conditions reads it on
+  appearing (the ordering is the contract). This is Context.MD's "the loaded Location" that Search
+  History and Favourites will later key on. In-memory in this Feature — the durable copy is the
+  Persistence Store's concern; nothing weather-related is ever held here.
+- **Navigation abstraction** — screen navigation the ViewModels request without depending on MAUI, so
+  they stay unit-testable per the MVVM-only principle. The app head implements it over the platform's
+  Shell routing; ViewModels only ever see the abstraction.
 
 Architectural decisions carried in from the documentation fabric:
 

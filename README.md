@@ -31,6 +31,12 @@ Early build. Delivered so far:
   condition text, and a day/night icon — or, on failure, clears every field and shows one friendly
   error. The OS-agnostic `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
   15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
+  Core also carries the **`LocationSearchViewModel`** — search, no-match and error handling, and
+  select-a-candidate → mint a `Location` → set the shared loaded-Location holder → navigate — over two
+  small MAUI-free seams it introduces: `ILoadedLocation` (an in-memory holder of the one currently
+  loaded Location, no persistence yet) and `INavigator` (a navigation abstraction the app head will
+  implement over Shell). The search screen itself, the DI registration for these types, and the
+  `INavigator` implementation are not built yet.
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
   Current Conditions page which fetches London's conditions on launch (fetch-on-load is the only
@@ -46,9 +52,10 @@ Early build. Delivered so far:
   drawn from the fixed 15-key `WeatherIconKeys` set. It does no I/O and no logging; an unrecognized
   or absent code falls back to `Unknown` and is flagged `Recognized: false` for the caller to log.
 
-The remaining domain modules (Hourly Forecast, Location Search — its Gateway geocoding seam is built,
-but the search screen and its ViewModel are not — Search History, Favourites, Units, persistence,
-launch resolver) are not built yet. The desktop build/launch proof is owned by a
+The remaining domain modules (Hourly Forecast, Location Search — its Gateway geocoding seam and
+`LocationSearchViewModel` are built, but the search screen, its DI wiring, and the `INavigator`
+implementation are not — Search History, Favourites, Units, persistence, launch resolver) are not
+built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
 scheduled path, never per-commit.
