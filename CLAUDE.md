@@ -14,6 +14,20 @@ The guide is the source of truth for *which skill to fire when*. The single rule
 which you must never break: **only a human moves a Story to `Agent Ready`** — that is the HITL→AFK
 handoff; the orchestrator owns every other transition.
 
+## Communication convention — sign off every stage
+
+End every skill / flow-stage run with an explicit, unambiguous sign-off line so a reader (human or
+orchestrator) never has to guess whether you finished, are still working, or stopped at a gate:
+
+- **On success:** `/<skill-name> complete!` — e.g. `/check-security-design complete!` — followed by
+  the short summary of what changed and what the next move in the flow is (and who owns it).
+- **On a deliberate stop** (a Required-inputs HALT, a gate that failed closed, a missing artefact, or
+  anything awaiting a human): `/<skill-name> HALTED — <one-line reason>`, then say exactly what is
+  needed to unblock.
+
+This applies to Factory skills run under their plugin name too (report the name you were invoked as).
+The sign-off is the *last* line of substance in the turn — don't bury it mid-message.
+
 ## Where the Factory skills come from
 
 The Factory skills install as the **`enate-sdlc-factory` plugin** from the `enate-skills`
