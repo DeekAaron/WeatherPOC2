@@ -26,6 +26,19 @@ public class ServiceRegistrationTests
     }
 
     [Fact]
+    public void AddWeatherPoc2Core_registers_the_weather_condition_mapper()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddWeatherPoc2Core();
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        Assert.NotNull(provider.GetRequiredService<WeatherConditionMapper>());
+        Assert.NotNull(provider.GetRequiredService<CurrentConditionsViewModel>()); // resolves with the mapper injected
+    }
+
+    [Fact]
     public void Named_open_meteo_client_has_a_15_second_timeout()
     {
         var services = new ServiceCollection();

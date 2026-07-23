@@ -11,19 +11,35 @@ full product requirements and `Roadmap.md` for the Feature breakdown.
 
 Early build. Delivered so far:
 
-- **`WeatherPoc2.Core`** — the Open-Meteo weather seam: `OpenMeteoGateway` fetches the current
-  temperature for a Location and converts **every** failure (transport/timeout, oversized response,
-  unparseable body, `error:true` body, non-200 status, missing `temperature_2m`, or a non-°C unit)
+- **`WeatherPoc2.Core`** — the Open-Meteo weather seam: `OpenMeteoGateway` fetches the full Current
+  Conditions bundle for a Location — Temperature and Wind Speed in canonical units (°C, km/h) and the
+  current hour's Chance of Rain, plus the raw `weather_code`/`is_day` icon hints — and converts
+  **every** failure (transport/timeout, oversized response, unparseable body, `error:true` body,
+  non-200 status; a missing or non-°C temperature, a missing wind speed or non-km/h wind unit, or a
+  current-hour Chance of Rain that is unmatched, null, or backed by a mismatched-length hourly array)
   into the typed `WeatherUnavailableException`, always after logging the endpoint and outcome — so a
-  partial, fabricated, or wrong-unit reading never reaches the app. Core also carries the
-  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm) and the OS-agnostic `AddWeatherPoc2Core` DI
-  extension (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway,
-  transient ViewModel).
+  partial, fabricated, or wrong-unit reading never reaches the app. The icon hints are lenient: an
+  absent `weather_code`/`is_day` flows through as `null` (resolved downstream by the mapper) rather
+  than failing the fetch. Core also carries the
+  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), which composes the bundle and the Weather
+  Condition Mapper into the full displayable panel — temperature, chance of rain, wind speed,
+  condition text, and a day/night icon — or, on failure, clears every field and shows one friendly
+  error. The OS-agnostic `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
+  15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
-  Current Conditions page which fetches London's temperature on launch (fetch-on-load is the only
-  refresh trigger for now) and renders it, or a friendly error, via MVVM bindings. Targets Mac
-  Catalyst always, with the Windows head built only on a Windows host.
+  Current Conditions page which fetches London's conditions on launch (fetch-on-load is the only
+  refresh trigger for now) and renders the Layout C panel — a weather icon, condition text and
+  temperature header above stacked chance-of-rain and wind-speed rows — or a friendly error, via
+  MVVM bindings. The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/`
+  (one per `WeatherIconKeys` member, registered as `MauiImage` and rasterized to `{key}.png` at
+  build), so the mapper's icon key resolves to a bundled asset at runtime. Targets Mac Catalyst
+  always, with the Windows head built only on a Windows host.
+- **Weather Condition Mapper** — a pure, deterministic Core component (`WeatherConditionMapper`)
+  that collapses Open-Meteo's numeric WMO weather codes (plus the `is_day` flag) onto the app's
+  curated `WeatherCondition` set, each carrying a human display name and a day/night icon-asset key
+  drawn from the fixed 15-key `WeatherIconKeys` set. It does no I/O and no logging; an unrecognized
+  or absent code falls back to `Unknown` and is flagged `Recognized: false` for the caller to log.
 
 The remaining domain modules (Hourly Forecast, Location Search, Search History, Favourites, Units,
 persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a

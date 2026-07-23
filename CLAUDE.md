@@ -53,15 +53,46 @@ Built so far:
   `WeatherUnavailableException`, `Location`, `WeatherBundle`), the `CurrentConditionsViewModel`
   (CommunityToolkit.Mvvm, fetch-on-load for `Location.LondonGb`, friendly fail-visible error), and
   the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
-  15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, transient ViewModel). Tested by the
+  15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, singleton `WeatherConditionMapper`,
+  transient ViewModel). The ViewModel now composes the widened `WeatherBundle` and the
+  `WeatherConditionMapper` (a third ctor dependency alongside `IWeatherGateway` + `ILogger`) into the
+  full displayable panel — `TemperatureDisplay`, `ChanceOfRainDisplay`, `WindSpeedDisplay`,
+  `ConditionText`, and `IconSource` (`{iconKey}.png`) — mapping `CurrentWeatherCode`/`IsDay` on
+  success and logging a Warning on each lenient fall-back (unrecognized/absent code, null `is_day`);
+  on `WeatherUnavailableException` all five displays are cleared (no stale/partial panel) and only the
+  fixed friendly copy is surfaced. Tested by the
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
-  and relies on the Gateway's °C unit assertion to prove the live response is in canonical units.
+  asserting the full widened `WeatherBundle` deserializes (temperature, wind speed, current-hour chance
+  of rain); because the widened Gateway already asserts both the °C and km/h unit pins and resolves the
+  current hour in `hourly.time[]`, a returned full bundle is itself the unit-aware + current-hour
+  assertion (the `InRange` checks are sanity bands atop that guarantee).
+  `WeatherBundle` now carries the **full Current Conditions payload** — Temperature and Wind Speed in
+  canonical units (°C, km/h) and the current-hour Chance of Rain as strict fail-closed measures, plus
+  the nullable `CurrentWeatherCode`/`IsDay` icon hints — and the Gateway widens its request
+  accordingly (`current=temperature_2m,wind_speed_10m,weather_code,is_day&hourly=precipitation_probability`,
+  both units pinned on the wire), asserts the km/h unit alongside the °C pin, matches the current-hour
+  precipitation by top-of-hour truncation, and fails closed (never `IndexOutOfRangeException`) on a
+  mismatched-length hourly array; the `IWeatherGateway` signature is unchanged.
+  Core also carries the pure **Weather Condition Mapper** (`WeatherConditionMapper`,
+  `WeatherConditionResult`, the `WeatherCondition` enum, and `WeatherIconKeys`) — a deterministic,
+  I/O-free `Map(weatherCode, isDay)` that collapses Open-Meteo's numeric WMO codes onto the curated
+  `WeatherCondition` set with a display name and a day/night icon-asset key from the fixed 15-key
+  `WeatherIconKeys.All` set; freezing-precipitation codes (56/57/66/67) fold into Snow, and an
+  unlisted or null code returns `Unknown` with `Recognized: false` (the caller logs the fallback).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
-  routing to a single Current Conditions page, and `Views/CurrentConditionsPage` binding
-  `IsLoading`/`TemperatureDisplay`/`ErrorMessage` and firing `LoadCommand` on `OnAppearing`
-  (MVVM-only). Targets `net10.0-maccatalyst` always; the Windows TFM is built only on a Windows host.
+  routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
+  panel**: an `Image` (`IconSource`) + condition (`ConditionText`) + temperature (`TemperatureDisplay`)
+  header grid above stacked `ChanceOfRainDisplay` / `WindSpeedDisplay` rows, plus the `IsLoading`
+  indicator and `ErrorMessage`, firing `LoadCommand` on `OnAppearing` (MVVM-only, no code-behind
+  logic). The 15 weather-condition icons are self-authored SVGs under `Resources/Images/` (one per
+  `WeatherIconKeys` member) registered via a `MauiImage` glob; the resizetizer rasterizes each to a
+  `{key}.png` the `Image.Source` binding resolves at runtime. `WeatherIconAssetsTests` (in
+  `WeatherPoc2.Core.Tests`) is the per-commit Tier-1 guard — pure source-tree file I/O, no MAUI SDK —
+  asserting every declared `WeatherIconKeys.All` key has a matching source SVG; build/rasterization/
+  render stay deferred to the HITL platform-verification story. Targets `net10.0-maccatalyst` always;
+  the Windows TFM is built only on a Windows host.
 
 The desktop build/launch verification is deferred to a HITL platform-verification story (the AFK
 runner cannot build either desktop head), so the automated suite is Core Tier-1 recorded-replay

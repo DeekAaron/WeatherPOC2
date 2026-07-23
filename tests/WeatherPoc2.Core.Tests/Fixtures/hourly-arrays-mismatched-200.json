@@ -1,0 +1,1 @@
+{"current_units":{"temperature_2m":"°C","wind_speed_10m":"km/h"},"current":{"time":"2026-07-22T17:00","temperature_2m":26.5,"wind_speed_10m":12.6,"weather_code":3,"is_day":1},"hourly":{"time":["2026-07-22T15:00","2026-07-22T16:00","2026-07-22T17:00"],"precipitation_probability":[5,0]}}
