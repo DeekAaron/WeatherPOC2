@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:WeatherPoc2.Core.ViewModels;assembly=WeatherPoc2.Core"
+             xmlns:weather="clr-namespace:WeatherPoc2.Core.Weather;assembly=WeatherPoc2.Core"
+             x:Class="WeatherPoc2.App.Views.LocationSearchPage"
+             x:DataType="vm:LocationSearchViewModel"
+             Title="Search">
+    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="24" RowSpacing="12">
+        <!-- Enter / the search glyph submits — search fires on explicit submit only. -->
+        <SearchBar Grid.Row="0"
+                   Placeholder="Search for a place…"
+                   Text="{Binding Query}"
+                   SearchCommand="{Binding SearchCommand}" />
+
+        <!-- "No matching places found" status (Req 25); empty when there is a match. -->
+        <Label Grid.Row="1" Text="{Binding StatusMessage}" />
+
+        <!-- Friendly transport-failure copy (Req 26). -->
+        <Label Grid.Row="2" Text="{Binding ErrorMessage}" TextColor="Red" />
+
+        <!-- Candidate list — each row shows the Candidate's Label; tapping picks it. -->
+        <CollectionView Grid.Row="3" ItemsSource="{Binding Candidates}" SelectionMode="None">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="weather:SearchCandidate">
+                    <Grid Padding="4,10">
+                        <Label Text="{Binding Label}" FontSize="16">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LocationSearchViewModel}}, Path=SelectCandidateCommand}"
+                                    CommandParameter="{Binding .}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>
