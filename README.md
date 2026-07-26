@@ -40,9 +40,16 @@ Early build. Delivered so far:
   curated `WeatherCondition` set, each carrying a human display name and a day/night icon-asset key
   drawn from the fixed 15-key `WeatherIconKeys` set. It does no I/O and no logging; an unrecognized
   or absent code falls back to `Unknown` and is flagged `Recognized: false` for the caller to log.
+- **Hourly Window** — the first slice of the Hourly Forecast, as pure Core logic: an
+  `HourlyForecastPoint` record (one forecast hour in canonical units, with a local wall-clock time and
+  nullable measures) and a pure `HourlyWindow.Compute(series, localNow)` that returns the hours from
+  now to the next upcoming 05:00 local — inclusive of 05:00, never past hours. It reads no device clock
+  and assumes no fixed 24 hours, so a daylight-saving transition day is handled by simply filtering the
+  hours the forecast actually returned. The Gateway hourly series and the on-screen forecast strip come
+  in later slices.
 
-The remaining domain modules (Hourly Forecast, Location Search, Search History, Favourites, Units,
-persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
+The remaining domain modules (the rest of the Hourly Forecast, Location Search, Search History,
+Favourites, Units, persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
 scheduled path, never per-commit.

@@ -2,6 +2,30 @@
 
 All notable changes to WeatherPOC2 are recorded here. The **why** matters as much as the **what**.
 
+## [Unreleased] - 2026-07-26
+
+### Added
+- **Hourly Forecast — pure `HourlyWindow` + `HourlyForecastPoint`** (Story #68) — the first slice of
+  the Hourly Forecast feature (ADO #45), landed as pure Core domain logic ahead of any Gateway or UI
+  wiring so the perceptual-day window is nailed down and trivially testable in isolation.
+  - **`HourlyForecastPoint`** — a record for one forecast hour in canonical units: `LocalTime` (a
+    `DateTimeKind.Unspecified` wall-clock value per **ADR-0002**'s `timezone=auto` timestamps) plus the
+    nullable `TemperatureCelsius` / `WeatherCode` / `IsDay` / `ChanceOfRainPercent` measures. Every
+    *measure* is nullable because Open-Meteo may null an individual hourly value (a null flows to a "—"
+    placeholder + a logged Warning downstream, Spec D3); `LocalTime` itself is never null — a
+    mismatched/absent series is the Gateway's fail-closed path, not a null timestamp.
+  - **`HourlyWindow.Compute(series, localNow)`** — a pure, I/O-free function returning the ordered slice
+    from the current hour to the next upcoming 05:00 local, inclusive of the 05:00 hour and never
+    including past hours. It is computed *purely* from the already-local timestamps ADR-0002 guarantees:
+    `localNow` is a parameter (no device clock is read), and the window filters the actual returned local
+    hours rather than assuming a fixed 24 — so a DST-transition day (a 23- or 25-hour day) is handled
+    naturally. Keeping it a pure function of already-local values is exactly what ADR-0002 set up, so no
+    in-app timezone database or DST arithmetic is needed.
+  - Covered by `HourlyWindowTests` (Tier-1, $0): mid-afternoon reaching into tomorrow's 05:00, the
+    pre-dawn short strip, the single-entry 05:00 hour (the settled `>=` boundary), the 06:00 reopen to a
+    full day, the never-past-hours invariant, and a UK spring-forward DST day proving the module filters
+    the real returned hours (the absent 01:00 is never fabricated).
+
 ## [Unreleased] - 2026-07-23
 
 ### Added
