@@ -33,5 +33,13 @@ public class LiveOpenMeteoTests
         Assert.InRange(bundle.CurrentTemperatureCelsius, -60.0, 60.0); // sanity band atop the unit guarantee
         Assert.InRange(bundle.CurrentWindSpeedKmh, 0.0, 500.0);
         Assert.InRange(bundle.CurrentChanceOfRainPercent, 0, 100);
+
+        // Feature 4: the widened timezone=auto series must deserialize — non-empty, and LocalNow parsed
+        // to a wall-clock (Kind=Unspecified) value. A returned bundle already proves the five hourly
+        // arrays were present and equal-length (the Gateway fails closed otherwise), so a populated
+        // Hourly is itself the equal-length + local-timestamp assertion; the checks below are sanity bands.
+        Assert.NotEmpty(bundle.Hourly);
+        Assert.Equal(DateTimeKind.Unspecified, bundle.LocalNow.Kind);
+        Assert.All(bundle.Hourly, p => Assert.Equal(DateTimeKind.Unspecified, p.LocalTime.Kind));
     }
 }
