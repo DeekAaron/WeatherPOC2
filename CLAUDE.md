@@ -100,10 +100,20 @@ Built so far:
   computed purely from the already-local timestamps ADR-0002's `timezone=auto` guarantees — it takes
   `localNow` as a parameter (no device clock) and filters the actual returned local hours, so a
   DST-transition day (a 23- or 25-hour day) is handled naturally without ever assuming a fixed 24. The
-  Gateway now emits this hourly series (Story #69 — `WeatherBundle.Hourly` + `LocalNow`), but no
-  ViewModel/View consumes the window yet — that is a later Hourly Forecast slice. Covered by
+  Gateway emits this hourly series (Story #69 — `WeatherBundle.Hourly` + `LocalNow`), and the
+  display-only **`HourlyForecastViewModel`** (Story #72, `ViewModels/`) now consumes it: `Apply(WeatherBundle)`
+  runs the pure `HourlyWindow` over the shared bundle, maps each windowed hour's icon through the
+  `WeatherConditionMapper`, and rebuilds an `ObservableCollection<HourlyForecastItem>` of immutable strip
+  cells (variant A: `TimeDisplay` `HH:00`, `IconSource` `{iconKey}.png`, whole-degree `TemperatureDisplay`,
+  `ChanceOfRainDisplay` %), flagging the current hour `IsNow`; a null temperature/chance renders "—" and
+  logs a Warning (fail-visible, Principle #1), an unrecognized/absent code or absent `is_day` also logs a
+  Warning, and `Clear()` empties the strip on the coordinator's failure path. Its ctor is
+  `WeatherConditionMapper` + `HourlyWindow` + `ILogger`; like the `WeatherViewModel` coordinator it is not
+  yet DI-registered in `AddWeatherPoc2Core` or bound to a View. Covered by
   `HourlyWindowTests` (Tier-1, $0): mid-afternoon, pre-dawn, the
-  05:00-hour single entry, the 06:00 reopen, never-past-hours, and the DST short-day case.
+  05:00-hour single entry, the 06:00 reopen, never-past-hours, and the DST short-day case; and by
+  `HourlyForecastViewModelTests` (Tier-1, $0): per-hour formatting incl. the night-icon variant, the
+  null-measure placeholder + Warning, entries replaced each `Apply`, and `Clear` empties.
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -128,8 +138,9 @@ runner cannot build either desktop head), so the automated suite is Core Tier-1 
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
 the Feature's CI setup. The Hourly Forecast is now underway — its pure `HourlyWindow` + `HourlyForecastPoint`
 slice and the widened Gateway hourly series (`WeatherBundle.Hourly` + `LocalNow`, `timezone=auto`) have
-landed, and `CurrentConditionsViewModel` is now display-only (Story #71) ahead of the shared-fetch
-`WeatherViewModel` coordinator, but that coordinator, the Hourly Forecast ViewModel and the View are
+landed, `CurrentConditionsViewModel` is now display-only (Story #71), and the display-only
+`HourlyForecastViewModel` strip cells have landed (Story #72), but the shared-fetch `WeatherViewModel`
+coordinator (which will DI-register and drive both display ViewModels) and the Hourly Forecast View are
 not built yet. The remaining
 domain modules from `PRD.md` (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet.
