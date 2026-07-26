@@ -80,6 +80,17 @@ Built so far:
   `WeatherCondition` set with a display name and a day/night icon-asset key from the fixed 15-key
   `WeatherIconKeys.All` set; freezing-precipitation codes (56/57/66/67) fold into Snow, and an
   unlisted or null code returns `Unknown` with `Recognized: false` (the caller logs the fallback).
+  Core also carries the first pure slice of the **Hourly Forecast** — `HourlyForecastPoint` (a record:
+  one forecast hour in canonical units — `LocalTime` as `DateTimeKind.Unspecified` per ADR-0002, plus
+  the nullable `TemperatureCelsius`/`WeatherCode`/`IsDay`/`ChanceOfRainPercent` measures) and the pure,
+  I/O-free **`HourlyWindow`** module. `HourlyWindow.Compute(series, localNow)` returns the ordered slice
+  from the current hour to the next upcoming 05:00 local (inclusive of the 05:00 hour, never past hours),
+  computed purely from the already-local timestamps ADR-0002's `timezone=auto` guarantees — it takes
+  `localNow` as a parameter (no device clock) and filters the actual returned local hours, so a
+  DST-transition day (a 23- or 25-hour day) is handled naturally without ever assuming a fixed 24. The
+  Gateway does not yet emit this hourly series and no ViewModel/View consumes the window yet — those are
+  later Hourly Forecast slices. Covered by `HourlyWindowTests` (Tier-1, $0): mid-afternoon, pre-dawn, the
+  05:00-hour single entry, the 06:00 reopen, never-past-hours, and the DST short-day case.
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -98,5 +109,7 @@ The desktop build/launch verification is deferred to a HITL platform-verificatio
 runner cannot build either desktop head), so the automated suite is Core Tier-1 recorded-replay
 (every commit) plus the single Tier-2 live drift guard (scheduled, never per-commit). No pipeline or
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
-the Feature's CI setup. The remaining domain modules from `PRD.md` (Hourly Forecast, Location Search,
-Search History, Favourites, Units, persistence, launch resolver) are not built yet.
+the Feature's CI setup. The Hourly Forecast is now underway — its pure `HourlyWindow` + `HourlyForecastPoint`
+slice has landed, but the Gateway hourly series, ViewModel, and View are not built yet. The remaining
+domain modules from `PRD.md` (the rest of the Hourly Forecast, Location Search, Search History,
+Favourites, Units, persistence, launch resolver) are not built yet.
