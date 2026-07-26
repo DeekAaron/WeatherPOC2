@@ -5,6 +5,11 @@
              x:Class="WeatherPoc2.App.Views.CurrentConditionsPage"
              x:DataType="vm:WeatherViewModel"
              Title="Weather">
+    <!-- Always-available magnifying-glass action → back to Location Search (Reqs 19 / 21).
+         Bound on the coordinator (WeatherViewModel) — the page's BindingContext. -->
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="🔍 Search" Command="{Binding OpenSearchCommand}" />
+    </ContentPage.ToolbarItems>
     <ScrollView>
         <VerticalStackLayout Padding="24" Spacing="16">
             <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" />

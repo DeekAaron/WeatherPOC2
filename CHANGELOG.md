@@ -147,6 +147,182 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
     full day, the never-past-hours invariant, and a UK spring-forward DST day proving the module filters
     the real returned hours (the absent 01:00 is never fabricated).
 
+## [Unreleased] - 2026-07-24
+
+### Changed
+- **Retire the hard-coded Location; wire Current Conditions to the loaded Location + DI registration**
+  (Story #66) — closes the Feature 3 seam between Location Search and Current Conditions and registers
+  the new types so the graph resolves.
+  - **`CurrentConditionsViewModel` now reads `ILoadedLocation.Current`** instead of the hard-coded
+    `Location.LondonGb` constant. `LoadAsync` no-ops when nothing is loaded yet (the brand-new-user
+    launch state, where search shows first) — the Seam-2 defensive path that keeps it from fetching a
+    null Location. Two new ctor dependencies: `ILoadedLocation` (the shared holder) and `INavigator`.
+    Why: London-on-launch was Feature-2 scaffolding; the product opens on the *loaded* Location, and
+    the holder is the shared seam Location Search writes and Current Conditions reads (PRD data flow).
+  - **`OpenSearchCommand`** — a new relay command that routes to the search screen via
+    `INavigator.GoToSearchAsync`, so the user can reach search from Current Conditions without the
+    ViewModel taking a MAUI dependency (Overriding Principle 2, MVVM-only).
+  - **DI wiring** — `AddWeatherPoc2Core` now registers `ILoadedLocation`→`LoadedLocation` as a
+    **singleton** (one holder shared across the search flow ↔ Current Conditions) and
+    `LocationSearchViewModel` as **transient**, alongside the existing `CurrentConditionsViewModel`.
+    The Story #65 types are now reachable through the container. The App head supplies the `INavigator`
+    implementation (not built yet), so `ServiceRegistrationTests` register a substitute `INavigator`
+    to build the provider.
+  - Covered by new/updated `CurrentConditionsViewModelTests` (reads the loaded Location; no-ops when
+    none loaded; `OpenSearch` requests navigation) and `ServiceRegistrationTests` (search VM resolves;
+    holder is a singleton). Tier-1, $0, every commit. No new packages.
+
+### Added
+- **Location Search ViewModel + its two supporting seams** (Story #65) — the orchestration half of the
+  Location Search screen. This story delivers Core-side logic only: `LocationSearchViewModel`, the
+  in-memory loaded-Location holder, and a MAUI-free navigation abstraction. The App-head search screen
+  itself, the DI registration for the new types, and the navigation implementation are deliberately
+  **not** in this story — the ViewModel is unit-testable now without a MAUI SDK on the AFK runner.
+  - **`LocationSearchViewModel`** (`WeatherPoc2.Core.ViewModels`, CommunityToolkit.Mvvm) — `Query`, an
+    observable `Candidates` collection, and `StatusMessage`/`ErrorMessage`. `SearchCommand` no-ops on a
+    blank/whitespace query (no wasted call), else calls `IWeatherGateway.SearchAsync`; an empty result
+    shows the fixed "No matching places found" status and keeps the screen put (PRD req 25), while a
+    `LocationSearchUnavailableException` clears candidates and surfaces the fixed friendly copy
+    ("Couldn't reach the search service — check your connection and try again.") — fail-visible, since
+    the Gateway already logged the diagnostic detail (Technical-Context Overriding Principle 1). This is
+    what lets the screen render "no such place" and "couldn't reach the service" as distinct outcomes.
+  - **`ILoadedLocation` / `LoadedLocation`** (`WeatherPoc2.Core.Weather`) — the in-memory holder of the
+    one currently-loaded Location (`Current` nullable, `Set(location)`), Context.MD's "the loaded
+    Location" that Search History and Favourites will later key on. Intended as a shared singleton so
+    the search flow and Current Conditions see one instance; nothing is persisted (Feature 3 scope), so
+    `Current` is null again on every launch (the brand-new-user launch state).
+  - **`INavigator`** (`WeatherPoc2.Core.Navigation`) — the navigation abstraction
+    (`GoToCurrentConditionsAsync`, `GoToSearchAsync`) the ViewModels request without depending on MAUI,
+    so they stay unit-testable (Overriding Principle 2, MVVM-only). The app head will implement it over
+    Shell routing in a later story.
+  - **Select → mint → set → navigate ordering (Seam 2)** — `SelectCandidateCommand` mints a `Location`
+    from the picked `SearchCandidate` (coordinates, `Label`, and `Id`→`OpenMeteoId`), sets the holder,
+    **then** navigates. The ordering is the contract, not incidental: Current Conditions reads
+    `ILoadedLocation.Current` on appearing, so a navigate-before-set reorder would show it a null
+    Location. `LocationSearchViewModelTests` red-guards the order itself with `Received.InOrder`, not
+    just the end state.
+  - Covered by `LocationSearchViewModelTests` (hits, no-match, transport-error, blank-query, and the
+    mint/set/navigate ordering) and `LoadedLocationTests` (null-before-load, set-then-read). Tier-1, $0,
+    every commit. No new packages (NSubstitute and CommunityToolkit.Mvvm were already in use).
+
+- **Geocoding search seam** (Story #64) — the second half of the Open-Meteo Gateway boundary the PRD
+  always described (`Search(name)` → Search Candidates), now built. `IWeatherGateway` gains
+  `SearchAsync(name, ct)` returning `IReadOnlyList<SearchCandidate>`, and `OpenMeteoGateway` implements it
+  against the geocoding endpoint (`geocoding-api.open-meteo.com/v1/search`, fixed
+  `count=10&language=en&format=json`).
+  - **`SearchCandidate`** — a new record (`Id`, `Name`, `Region`, `Country`, `Latitude`, `Longitude`) whose
+    `Label` reads "Name, Region, Country", collapsing to "Name, Country" when the Open-Meteo `admin1`
+    (Region) is absent. It is a Search Candidate, not yet a Location — per Context.MD it becomes one only
+    when the user picks it (PRD reqs 22–24).
+  - **Typed, fail-visible failure** — every geocoding failure mode (transport/timeout, unparseable body,
+    non-2xx status) is logged at Error with endpoint + outcome and converted to the new
+    `LocationSearchUnavailableException`, kept distinct from `WeatherUnavailableException` so the two failure
+    domains stay independently worded. This is what lets the app tell "no such place" from "couldn't reach
+    the service" (PRD req 26; Technical-Context Overriding Principle 1).
+  - **No match is not an error** — a 200 with the `results` key absent (proven live 2026-07-23) maps to an
+    empty list, never an exception, so the search screen can render a plain "No matching places found" and
+    stay put (PRD req 25).
+  - **Query-parameter injection guarded** (security AC) — the untrusted `name` is percent-encoded via
+    `Uri.EscapeDataString` inside the `name` value only, so a crafted query can neither inject an extra query
+    parameter nor override the fixed count/format/language; locked by a regression test.
+  - **Tier-2 live geocoding drift guard** — `LiveOpenMeteoTests` gains
+    `Live_London_geocoding_returns_candidates`: one real geocoding call for "London" asserting the GB result
+    resolves, guarding the recorded geocoding fixtures against live-contract drift. Trait-gated
+    (`[Trait("Tier","2-Live")]`), never per-commit, within F1's ≤ 5 live calls/day ceiling.
+  - Covered by three Tier-1 recorded-replay fixtures (`geocoding-london-200`, `geocoding-no-match-200`,
+    `geocoding-singapore-admin1-absent-200`) plus `OpenMeteoGeocodingTests` / `SearchCandidateTests` —
+    candidate mapping, label composition with and without Region, empty-on-no-match, each typed-failure path,
+    request shape, the injection-encoding regression, and endpoint+outcome logging. $0, every commit.
+
+- **Current Conditions Layout C panel + bundled weather icon assets** (Story #57) — the App-head
+  presentation slice. `Views/CurrentConditionsPage` becomes the Layout C panel: a weather `Image`
+  (bound to `IconSource`) + `ConditionText` + `TemperatureDisplay` header grid above stacked
+  `ChanceOfRainDisplay` / `WindSpeedDisplay` rows, keeping all state in the ViewModel (MVVM-only,
+  no code-behind logic added).
+  - **15 self-authored SVG icons** land under `src/WeatherPoc2.App/Resources/Images/` — one per
+    `WeatherIconKeys` member — registered with a `<MauiImage Include="Resources/Images/*.svg" />`
+    glob so the resizetizer rasterizes each to a `{key}.png` the `Image.Source` binding resolves at
+    runtime. Self-authored (not third-party) keeps the asset set license-clean and exactly aligned
+    to the mapper's key set.
+  - **Per-commit icon-asset guard** — `WeatherIconAssetsTests` asserts every declared
+    `WeatherIconKeys.All` key has a matching source SVG in the tree. It is pure source-tree file I/O
+    with no MAUI SDK dependency, so it runs in the Tier-1 per-commit suite ($0) on the AFK runner that
+    cannot build a desktop head; actual build/rasterization/render proof stays deferred to the HITL
+    platform-verification story (Spec Seam 2/4).
+- **Current Conditions ViewModel mapper wiring + DI registration** (Story #56) — joins the two prior
+  slices into displayable state. `CurrentConditionsViewModel` gains a `WeatherConditionMapper` ctor
+  dependency (alongside F1's `IWeatherGateway` + `ILogger`) and four new display properties —
+  `ChanceOfRainDisplay`, `WindSpeedDisplay`, `ConditionText`, and `IconSource` — so the panel now
+  renders the full Current Conditions payload, not just temperature. On a successful fetch the VM maps
+  `CurrentWeatherCode`/`IsDay` to the condition word and a day/night icon key (`{iconKey}.png`).
+  - **Fail-visible fall-backs** (Technical-Context Overriding Principle 1) — the mapper's lenient
+    fall-backs are logged, never silent: an unrecognized/absent `weather_code` and a null `is_day` each
+    emit a `Warning`, so a degraded read is observable rather than swallowed.
+  - **No stale/partial panel on failure** (security AC) — on `WeatherUnavailableException` every one of
+    the five displays is cleared and only the fixed friendly copy is surfaced; no upstream or internal
+    detail leaks, and no earlier reading lingers as if current.
+  - **`WeatherConditionMapper` registered as a singleton** in `AddWeatherPoc2Core` (pure + stateless),
+    so a real container with `validateScopes: true` resolves the ViewModel with the mapper injected;
+    `MauiProgram` is unchanged. Covered by new VM and service-registration tests (Tier-1, $0); F1's
+    existing tests were updated for the new ctor parameter.
+
+- **Widened Current Conditions at the Gateway seam** (Story #55) — `OpenMeteoGateway` now requests the
+  full Current Conditions payload (`current=temperature_2m,wind_speed_10m,weather_code,is_day`,
+  `hourly=precipitation_probability`) and pins **both** canonical units explicitly on the wire
+  (`temperature_unit=celsius&wind_speed_unit=kmh`, never relying on API defaults), and `WeatherBundle`
+  is **extended, not reshaped** — it gains `CurrentWindSpeedKmh`, `CurrentChanceOfRainPercent`, and the
+  nullable `CurrentWeatherCode`/`IsDay` icon hints alongside F1's `CurrentTemperatureCelsius`. The
+  `IWeatherGateway` signature is unchanged, so F1's contract is preserved.
+  - **Strict numeric measures fail closed** — wind speed plus a new `current_units.wind_speed_10m == "km/h"`
+    assertion (belt-and-suspenders, mirroring F1's °C pin so the km/h guarantee is proven on the wire),
+    and the current-hour Chance of Rain: `current.time` is truncated to the top of the hour, matched
+    exactly against `hourly.time[]`, and the parallel `precipitation_probability[]` read at that index.
+    An absent series, an unmatched hour, or a null probability throws `WeatherUnavailableException` after
+    an Error log — `0` is a valid probability, never a fallback.
+  - **Lenient icon hints flow through** — absent/null `weather_code` / `is_day` do not fail the fetch;
+    they land as nullable bundle fields the Weather Condition Mapper resolves downstream (Unknown / day).
+  - **Array-bounds safety on the untrusted parallel read** (security acceptance criterion) — the resolved
+    current-hour index is guarded against `precipitation_probability[].Length`, so a degenerate Open-Meteo
+    response whose `hourly.time[]` outruns its probability array fails closed with
+    `WeatherUnavailableException` rather than an unhandled `IndexOutOfRangeException`.
+  - Covered by widened Tier-1 recorded-replay fixtures and gateway tests (full-bundle mapping, the widened
+    request string, minute-truncation hour match, and each strict failure path including the
+    mismatched-array bounds guard); F1's existing gateway tests still pass. $0, every commit.
+
+- **Weather Condition Mapper** (`WeatherPoc2.Core`) — a pure, deterministic `WeatherConditionMapper`
+  whose `Map(weatherCode, isDay)` collapses Open-Meteo's numeric WMO weather codes onto the curated
+  `WeatherCondition` enum and returns a `WeatherConditionResult` (condition, display name,
+  icon-asset key, and a `Recognized` flag). Icon keys come from the new `WeatherIconKeys` — the
+  single source of truth for the finite 15-key icon-asset set (four conditions carry day/night
+  variants, six a single icon, plus the neutral `unknown`). The component does no I/O and no logging
+  so it stays trivially unit-testable; a caller logs the lenient fall-back.
+  - **Lenient fall-back, fail-visible at the caller** — an unlisted or `null` WMO code maps to
+    `WeatherCondition.Unknown` (icon `unknown`) with `Recognized: false`, and a `null` `is_day`
+    selects the day variant. The mapper never throws on unexpected input; it surfaces the
+    unrecognized case via the `Recognized` flag so the caller can log it (Technical-Context
+    Overriding Principle 1, fail-visible), rather than swallowing it silently.
+  - **Freezing precipitation folds into Snow** — WMO 56/57 (freezing drizzle) and 66/67 (freezing
+    rain) map to `Snow`, a deliberate curation of the WMO table onto the app's small condition set.
+  - Covered by `WeatherConditionMapperTests` (every WMO code → condition, day/night icon selection,
+    unknown/null fall-back, display names) and `WeatherIconKeysTests` (the icon-key set is exactly
+    the 15 declared keys), Tier-1 and $0.
+
+### Changed
+- **Tier-2 live drift guard extended to the widened bundle** (Story #58) — F1's
+  `Live_London_fetch_returns_a_celsius_bundle` is replaced by
+  `Live_London_fetch_returns_a_full_current_conditions_bundle`, which makes the same single real
+  Open-Meteo call for London but now asserts the **full** widened `WeatherBundle` comes back
+  (temperature, wind speed, current-hour chance of rain), not just Celsius. This matters because the
+  live guard exists to catch the recorded Tier-1 fixtures drifting from the live contract, and that
+  contract widened at the Gateway seam (Story #55) — a °C-only assertion would no longer notice a
+  server-side drift in the km/h units or the current-hour precipitation shape. No looser plausibility
+  band is introduced: the widened Gateway throws `WeatherUnavailableException` unless both unit pins
+  (°C, km/h) hold and the current hour resolves in `hourly.time[]`, so a returned full bundle *is* the
+  unit-aware + current-hour assertion, with `InRange` sanity bands sitting atop that guarantee. Stays
+  one trait-gated (`[Trait("Tier","2-Live")]`) call — excluded from the per-commit run
+  (`dotnet test --filter "Tier!=2-Live"`), selected only by `--filter "Tier=2-Live"` — within F1's
+  ≤ 5 live calls/day ceiling. No new fixture, no pipeline/schedule wiring.
+
 ## [Unreleased] - 2026-07-23
 
 ### Added

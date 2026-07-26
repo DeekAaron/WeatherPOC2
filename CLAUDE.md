@@ -49,24 +49,20 @@ Stack is **.NET 10 / C#** (SDK pinned via `global.json` at `10.0.100`). Solution
 
 Built so far:
 
-- `WeatherPoc2.Core` — the Open-Meteo weather seam (`OpenMeteoGateway`, `IWeatherGateway`,
-  `WeatherUnavailableException`, `Location`, `WeatherBundle`), the display-only
-  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), and
-  the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
-  15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, the pure stateless singletons
-  `WeatherConditionMapper` and `HourlyWindow`, and the three ViewModels — the `WeatherViewModel`
-  coordinator plus its two display-only children `CurrentConditionsViewModel` and
-  `HourlyForecastViewModel` — as transients (Story #74 DI registration)). The ViewModel is
-  **display-only** (Story #71 — it no longer fetches or owns
-  `IWeatherGateway`/`LoadCommand`/`ErrorMessage`/`IsLoading`; its ctor is now `WeatherConditionMapper` +
-  `ILogger`). A parent `WeatherViewModel` coordinator (Story #73, `ViewModels/`) owns the single
-  `GetWeather` call and drives the panel through two synchronous methods: `Apply(WeatherBundle)` composes the widened
-  bundle and the `WeatherConditionMapper` into the full displayable panel — `TemperatureDisplay`,
-  `ChanceOfRainDisplay`, `WindSpeedDisplay`, `ConditionText`, and `IconSource` (`{iconKey}.png`) —
-  mapping `CurrentWeatherCode`/`IsDay` and logging a Warning on each lenient fall-back (unrecognized/
-  absent code, null `is_day`); `Clear()` blanks all five displays (no stale/partial panel), which the
-  coordinator calls on `WeatherUnavailableException` alongside surfacing the fixed friendly copy itself.
-  Tested by the
+- `WeatherPoc2.Core` — the Open-Meteo seam (`OpenMeteoGateway`, `IWeatherGateway`,
+  `WeatherUnavailableException`, `LocationSearchUnavailableException`, `Location`, `WeatherBundle`,
+  `SearchCandidate`), the **display-only** `CurrentConditionsViewModel` (CommunityToolkit.Mvvm —
+  `Apply(bundle)`/`Clear()`, no fetch of its own, per Story #71), the parent **`WeatherViewModel`**
+  coordinator (Story #73, now integrated with Feature 3) that owns the single `GetWeather` call — for
+  the **loaded Location** read from `ILoadedLocation.Current` rather than a hard-coded constant,
+  no-opping when nothing is loaded (launch shows search first) — distributes the one bundle to both
+  display children, and exposes an `OpenSearchCommand` routing to search via `INavigator`; the
+  **`LocationSearchViewModel`** (search / no-match / error, and select-a-candidate -> set the shared
+  holder -> navigate); and the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named
+  `HttpClient` with a 15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, the pure stateless
+  singletons `WeatherConditionMapper` and `HourlyWindow`, singleton `ILoadedLocation`->`LoadedLocation`,
+  and the `WeatherViewModel` coordinator + both display-only children + `LocationSearchViewModel` as
+  transients; `INavigator` is supplied by the MAUI head). Tested by the
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
   asserting the full widened `WeatherBundle` deserializes (temperature, wind speed, current-hour chance
@@ -81,43 +77,41 @@ Built so far:
   widens its request accordingly (`current=temperature_2m,wind_speed_10m,weather_code,is_day`,
   `hourly=temperature_2m,weather_code,precipitation_probability,is_day`, `timezone=auto&forecast_days=2`,
   both units pinned on the wire), asserts the km/h unit alongside the °C pin, matches the current-hour
-  precipitation by top-of-hour truncation, parses `current.time`/`hourly.time[]` invariantly to
+precipitation by top-of-hour truncation, parses `current.time`/`hourly.time[]` invariantly to
   `Kind=Unspecified` wall-clock DateTimes (no device tz/locale shift), validates the five hourly arrays
   are present and equal-length and pins the hourly units (°C / %) on the wire — failing closed as
   `WeatherUnavailableException` (never `IndexOutOfRangeException`) on a mismatched-length or missing
-  hourly array — and projects the `HourlyForecastPoint` list (a null element in a value array soft-passes
-  as a null field); the `IWeatherGateway` signature is unchanged. A **security control** keeps every
-  `_logger` call to the endpoint only — `BaseUrl` (scheme+host+path) + `Location.Label`, never the
-  coordinate-bearing url — so the Location's latitude/longitude stay out of the log sink.
+  hourly array — and projects the `HourlyForecastPoint` list (a null element in a value array
+  soft-passes as a null field). A **security control** keeps every `_logger` call to the endpoint only
+  — `BaseUrl` (scheme+host+path) + `Location.Label`, never the coordinate-bearing url. The Gateway also
+  carries the **geocoding half** of the seam (Story #64): `IWeatherGateway.SearchAsync(name, ct)` ->
+  `IReadOnlyList<SearchCandidate>` against `geocoding-api.open-meteo.com/v1/search` (fixed
+  `count=10&language=en&format=json`, the untrusted `name` percent-encoded), returning an empty list on
+  a no-match 200 and converting every failure to the typed `LocationSearchUnavailableException`;
+  `SearchCandidate` exposes a `Label` ("Name, Region, Country", collapsing to "Name, Country" when
+  `admin1` is absent). Covered by `OpenMeteoGeocodingTests` / `SearchCandidateTests` and a Tier-2
+  geocoding drift guard; the `IWeatherGateway` signature carries both `GetWeatherAsync` and `SearchAsync`.
   Core also carries the pure **Weather Condition Mapper** (`WeatherConditionMapper`,
   `WeatherConditionResult`, the `WeatherCondition` enum, and `WeatherIconKeys`) — a deterministic,
   I/O-free `Map(weatherCode, isDay)` that collapses Open-Meteo's numeric WMO codes onto the curated
   `WeatherCondition` set with a display name and a day/night icon-asset key from the fixed 15-key
   `WeatherIconKeys.All` set; freezing-precipitation codes (56/57/66/67) fold into Snow, and an
   unlisted or null code returns `Unknown` with `Recognized: false` (the caller logs the fallback).
-  Core also carries the first pure slice of the **Hourly Forecast** — `HourlyForecastPoint` (a record:
-  one forecast hour in canonical units — `LocalTime` as `DateTimeKind.Unspecified` per ADR-0002, plus
-  the nullable `TemperatureCelsius`/`WeatherCode`/`IsDay`/`ChanceOfRainPercent` measures) and the pure,
-  I/O-free **`HourlyWindow`** module. `HourlyWindow.Compute(series, localNow)` returns the ordered slice
-  from the current hour to the next upcoming 05:00 local (inclusive of the 05:00 hour, never past hours),
-  computed purely from the already-local timestamps ADR-0002's `timezone=auto` guarantees — it takes
-  `localNow` as a parameter (no device clock) and filters the actual returned local hours, so a
-  DST-transition day (a 23- or 25-hour day) is handled naturally without ever assuming a fixed 24. The
-  Gateway emits this hourly series (Story #69 — `WeatherBundle.Hourly` + `LocalNow`), and the
-  display-only **`HourlyForecastViewModel`** (Story #72, `ViewModels/`) now consumes it: `Apply(WeatherBundle)`
-  runs the pure `HourlyWindow` over the shared bundle, maps each windowed hour's icon through the
-  `WeatherConditionMapper`, and rebuilds an `ObservableCollection<HourlyForecastItem>` of immutable strip
-  cells (variant A: `TimeDisplay` `HH:00`, `IconSource` `{iconKey}.png`, whole-degree `TemperatureDisplay`,
-  `ChanceOfRainDisplay` %), flagging the current hour `IsNow`; a null temperature/chance renders "—" and
-  logs a Warning (fail-visible, Principle #1), an unrecognized/absent code or absent `is_day` also logs a
-  Warning, and `Clear()` empties the strip on the coordinator's failure path. Its ctor is
-  `WeatherConditionMapper` + `HourlyWindow` + `ILogger`; as of Story #74 it — like the `WeatherViewModel`
-  coordinator and `CurrentConditionsViewModel` — is now DI-registered in `AddWeatherPoc2Core` (all three
-  as transients, `HourlyWindow` as a singleton), though not yet bound to a View. Covered by
-  `HourlyWindowTests` (Tier-1, $0): mid-afternoon, pre-dawn, the
-  05:00-hour single entry, the 06:00 reopen, never-past-hours, and the DST short-day case; and by
-  `HourlyForecastViewModelTests` (Tier-1, $0): per-hour formatting incl. the night-icon variant, the
-  null-measure placeholder + Warning, entries replaced each `Apply`, and `Clear` empties.
+Core also carries the first pure slices of the **Hourly Forecast** — `HourlyForecastPoint` (one
+  forecast hour in canonical units, `LocalTime` as `Kind=Unspecified` per ADR-0002) and the pure,
+  I/O-free **`HourlyWindow`** (`Compute(series, localNow)` returns the current-hour -> next-05:00-local
+  slice, inclusive of 05:00, never past hours, DST-safe) — the widened Gateway emits the series
+  (`WeatherBundle.Hourly` + `LocalNow`), and the display-only **`HourlyForecastViewModel`** consumes it
+  (`Apply(bundle)` runs the window, maps each hour's icon, rebuilds an
+  `ObservableCollection<HourlyForecastItem>` strip; null measures render "—" + a Warning; `Clear()`
+  empties it). Core also carries the **Location Search** orchestration: **`LocationSearchViewModel`**
+  (`Query`, `Candidates`, `StatusMessage`/`ErrorMessage`, a `SearchCommand` that no-ops on blank input
+  and shows "No matching places found" on an empty result, and a `SelectCandidateCommand` that mints a
+  `Location`, sets the shared holder, then navigates), plus the two MAUI-free seams it introduces —
+  **`ILoadedLocation`**/`LoadedLocation` (in-memory holder of the one loaded Location, no persistence)
+  and **`INavigator`** (`GoToCurrentConditionsAsync`/`GoToSearchAsync`, implemented by the app head over
+  Shell). Covered by `HourlyWindowTests`, `HourlyForecastViewModelTests`, `LocationSearchViewModelTests`,
+  `LoadedLocationTests` (Tier-1, $0).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -140,15 +134,8 @@ The desktop build/launch verification is deferred to a HITL platform-verificatio
 runner cannot build either desktop head), so the automated suite is Core Tier-1 recorded-replay
 (every commit) plus the single Tier-2 live drift guard (scheduled, never per-commit). No pipeline or
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
-the Feature's CI setup. The Hourly Forecast is now underway — its pure `HourlyWindow` + `HourlyForecastPoint`
-slice and the widened Gateway hourly series (`WeatherBundle.Hourly` + `LocalNow`, `timezone=auto`) have
-landed, `CurrentConditionsViewModel` is now display-only (Story #71), the display-only
-`HourlyForecastViewModel` strip cells have landed (Story #72), the shared-fetch `WeatherViewModel`
-coordinator that owns the single fetch and drives both display ViewModels has landed (Story #73), and the
-whole coordinator graph is now DI-registered in `AddWeatherPoc2Core` (Story #74 — `HourlyWindow` joins
-`WeatherConditionMapper` as a pure stateless singleton; the coordinator and both child ViewModels register
-as transients, so the container resolves the coordinator with both children non-null). Still to come: the
-Hourly Forecast View and the `CurrentConditionsPage` rewire (off the dangling Story-#71 bindings) onto the
-coordinator. The remaining
-domain modules from `PRD.md` (the rest of the Hourly Forecast, Location Search, Search History,
-Favourites, Units, persistence, launch resolver) are not built yet.
+the Feature's CI setup. Features 1–2 (Current Temperature, Current Conditions), Feature 4 (Hourly
+Forecast) and Feature 3 (Location Search) are built end-to-end — including the MAUI app-head **Location
+Search screen** + `MauiNavigator` `INavigator` implementation and the Current Conditions page (Layout C
+panel + Hourly strip + the always-available magnifying-glass toolbar). The remaining domain modules from
+`PRD.md` (Search History, Favourites, Units, persistence, launch resolver) are not built yet.

@@ -42,4 +42,18 @@ public class LiveOpenMeteoTests
         Assert.Equal(DateTimeKind.Unspecified, bundle.LocalNow.Kind);
         Assert.All(bundle.Hourly, p => Assert.Equal(DateTimeKind.Unspecified, p.LocalTime.Kind));
     }
+
+    [Fact]
+    public async Task Live_London_geocoding_returns_candidates()
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient());
+        var gateway = new OpenMeteoGateway(factory, NullLogger<OpenMeteoGateway>.Instance);
+
+        var candidates = await gateway.SearchAsync("London", CancellationToken.None);
+
+        // A live "London" search must resolve real places; the GB result must be among them.
+        Assert.NotEmpty(candidates);
+        Assert.Contains(candidates, c => c.Name == "London" && c.Country == "United Kingdom");
+    }
 }
