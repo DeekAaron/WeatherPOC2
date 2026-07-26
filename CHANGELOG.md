@@ -4,6 +4,22 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 
 ## [Unreleased] - 2026-07-26
 
+### Changed
+- **`CurrentConditionsViewModel` demoted to display-only** (Story #71) — the Current Conditions
+  view-model no longer fetches. It drops its `IWeatherGateway` dependency, the `LoadCommand`, and the
+  `ErrorMessage`/`IsLoading` fetch-state, and exposes two synchronous methods instead: `Apply(bundle)`
+  populates the five display properties (deriving the condition word + day/night icon via the pure
+  `WeatherConditionMapper`, logging a Warning on each lenient fall-back so the derivation stays
+  fail-visible per Principle #1), and `Clear()` blanks them so no stale panel reads as current.
+  **Why:** the Hourly Forecast feature fetches weather once and shows it in two panels (Current
+  Conditions + Hourly); making this view-model a passive display target lets a later `WeatherViewModel`
+  coordinator own the single `GetWeather` call and push the shared `WeatherBundle` into both — the
+  fetch-coupling the PRD requires — rather than each panel fetching independently. The coordinator, and
+  the rewiring of `CurrentConditionsPage` (whose `LoadCommand`/`ErrorMessage`/`IsLoading` bindings are
+  now dangling), land in a later story; the desktop head is not built on the AFK runner, so the Core
+  Tier-1 suite stays green. The ViewModel's four behavioural tests moved from `LoadCommand.ExecuteAsync`
+  to direct `Apply`/`Clear` calls (the NSubstitute gateway fake is no longer needed in that file).
+
 ### Added
 - **Seam 2 proof completed — local-timestamp parse is culture- and timezone-invariant** (Story #70) —
   a single new Tier-1 recorded-replay test

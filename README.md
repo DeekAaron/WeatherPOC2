@@ -21,17 +21,21 @@ Early build. Delivered so far:
   partial, fabricated, or wrong-unit reading never reaches the app. The icon hints are lenient: an
   absent `weather_code`/`is_day` flows through as `null` (resolved downstream by the mapper) rather
   than failing the fetch. Core also carries the
-  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), which composes the bundle and the Weather
-  Condition Mapper into the full displayable panel — temperature, chance of rain, wind speed,
-  condition text, and a day/night icon — or, on failure, clears every field and shows one friendly
-  error. The OS-agnostic `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
+  display-only `CurrentConditionsViewModel` (CommunityToolkit.Mvvm): `Apply(bundle)` composes the
+  bundle and the Weather Condition Mapper into the full displayable panel — temperature, chance of
+  rain, wind speed, condition text, and a day/night icon — and `Clear()` blanks every field so no
+  stale panel lingers. It no longer fetches: a later `WeatherViewModel` coordinator owns the single
+  fetch and calls `Apply`/`Clear` (surfacing the one friendly error itself on failure). The OS-agnostic
+  `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
   15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
-  Current Conditions page which fetches London's conditions on launch (fetch-on-load is the only
-  refresh trigger for now) and renders the Layout C panel — a weather icon, condition text and
+  Current Conditions page that renders the Layout C panel — a weather icon, condition text and
   temperature header above stacked chance-of-rain and wind-speed rows — or a friendly error, via
-  MVVM bindings. The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/`
+  MVVM bindings. (The page's original fetch-on-launch wiring binds `LoadCommand`/`ErrorMessage`/
+  `IsLoading`, which the now display-only ViewModel no longer exposes as of Story #71; it is rewired to
+  the shared-fetch `WeatherViewModel` coordinator in a later story. This desktop head is not built on
+  the AFK runner.) The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/`
   (one per `WeatherIconKeys` member, registered as `MauiImage` and rasterized to `{key}.png` at
   build), so the mapper's icon key resolves to a bundled asset at runtime. Targets Mac Catalyst
   always, with the Windows head built only on a Windows host.
