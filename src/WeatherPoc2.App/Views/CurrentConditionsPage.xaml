@@ -3,26 +3,54 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:WeatherPoc2.Core.ViewModels;assembly=WeatherPoc2.Core"
              x:Class="WeatherPoc2.App.Views.CurrentConditionsPage"
-             x:DataType="vm:CurrentConditionsViewModel"
+             x:DataType="vm:WeatherViewModel"
              Title="Weather">
-    <VerticalStackLayout Padding="24" Spacing="16">
-        <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" />
+    <ScrollView>
+        <VerticalStackLayout Padding="24" Spacing="16">
+            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" />
 
-        <!-- header: icon + condition + temperature -->
-        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14" VerticalOptions="Center">
-            <Image Grid.Column="0" Source="{Binding IconSource}" HeightRequest="56" WidthRequest="56" />
-            <Label Grid.Column="1" Text="{Binding ConditionText}" VerticalOptions="Center" FontSize="18" />
-            <Label Grid.Column="2" Text="{Binding TemperatureDisplay}" VerticalOptions="Center" FontSize="40" />
-        </Grid>
+            <!-- Current Conditions panel (child VM) -->
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14" VerticalOptions="Center"
+                  BindingContext="{Binding CurrentConditions}" x:DataType="vm:CurrentConditionsViewModel">
+                <Image Grid.Column="0" Source="{Binding IconSource}" HeightRequest="56" WidthRequest="56" />
+                <Label Grid.Column="1" Text="{Binding ConditionText}" VerticalOptions="Center" FontSize="18" />
+                <Label Grid.Column="2" Text="{Binding TemperatureDisplay}" VerticalOptions="Center" FontSize="40" />
+            </Grid>
 
-        <!-- stacked measures -->
-        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="10">
-            <Label Grid.Row="0" Grid.Column="0" Text="Chance of rain" />
-            <Label Grid.Row="0" Grid.Column="1" Text="{Binding ChanceOfRainDisplay}" />
-            <Label Grid.Row="1" Grid.Column="0" Text="Wind speed" />
-            <Label Grid.Row="1" Grid.Column="1" Text="{Binding WindSpeedDisplay}" />
-        </Grid>
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="10"
+                  BindingContext="{Binding CurrentConditions}" x:DataType="vm:CurrentConditionsViewModel">
+                <Label Grid.Row="0" Grid.Column="0" Text="Chance of rain" />
+                <Label Grid.Row="0" Grid.Column="1" Text="{Binding ChanceOfRainDisplay}" />
+                <Label Grid.Row="1" Grid.Column="0" Text="Wind speed" />
+                <Label Grid.Row="1" Grid.Column="1" Text="{Binding WindSpeedDisplay}" />
+            </Grid>
 
-        <Label Text="{Binding ErrorMessage}" TextColor="Red" HorizontalOptions="Center" />
-    </VerticalStackLayout>
+            <!-- Hourly Forecast strip (child VM); the current hour is tinted via the IsNow DataTrigger -->
+            <Label Text="Hourly forecast" FontSize="14" />
+            <CollectionView ItemsSource="{Binding HourlyForecast.Entries}" HeightRequest="132">
+                <CollectionView.ItemsLayout>
+                    <LinearItemsLayout Orientation="Horizontal" ItemSpacing="8" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HourlyForecastItem">
+                        <Border Padding="8" StrokeThickness="0" WidthRequest="74" BackgroundColor="Transparent">
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsNow}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="#1F3A86C8" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                            <VerticalStackLayout Spacing="6" HorizontalOptions="Center">
+                                <Label Text="{Binding TimeDisplay}" HorizontalOptions="Center" FontSize="13" />
+                                <Image Source="{Binding IconSource}" HeightRequest="30" WidthRequest="30" HorizontalOptions="Center" />
+                                <Label Text="{Binding TemperatureDisplay}" HorizontalOptions="Center" FontSize="15" />
+                                <Label Text="{Binding ChanceOfRainDisplay}" HorizontalOptions="Center" FontSize="12" TextColor="#3a86c8" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <Label Text="{Binding ErrorMessage}" TextColor="Red" HorizontalOptions="Center" />
+        </VerticalStackLayout>
+    </ScrollView>
 </ContentPage>
