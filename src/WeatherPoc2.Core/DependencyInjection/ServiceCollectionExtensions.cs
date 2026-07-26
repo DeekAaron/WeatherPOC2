@@ -7,9 +7,11 @@ namespace WeatherPoc2.Core.DependencyInjection;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the OS-agnostic Weather graph: the named HttpClient for the Gateway,
-    /// the Gateway itself, and the Current Conditions ViewModel. The MAUI head calls this,
-    /// then adds the platform Page. Callers must have added logging (AddLogging / MAUI default).
+    /// Registers the OS-agnostic Weather graph: the named HttpClient for the Gateway, the Gateway
+    /// itself, the pure stateless singletons (WeatherConditionMapper, HourlyWindow), and the
+    /// ViewModels — the WeatherViewModel coordinator plus its two display-only children
+    /// (CurrentConditions, HourlyForecast) as transients. The MAUI head calls this, then adds the
+    /// platform Page. Callers must have added logging (AddLogging / MAUI default).
     /// </summary>
     public static IServiceCollection AddWeatherPoc2Core(this IServiceCollection services)
     {
@@ -25,7 +27,10 @@ public static class ServiceCollectionExtensions
         });
         services.AddSingleton<IWeatherGateway, OpenMeteoGateway>();
         services.AddSingleton<WeatherConditionMapper>();   // pure + stateless
+        services.AddSingleton<HourlyWindow>();             // pure + stateless
         services.AddTransient<CurrentConditionsViewModel>();
+        services.AddTransient<HourlyForecastViewModel>();
+        services.AddTransient<WeatherViewModel>();
         return services;
     }
 }
