@@ -19,7 +19,7 @@ public class CurrentConditionsViewModelTests
     {
         var gateway = Substitute.For<IWeatherGateway>();
         gateway.GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>())
-               .Returns(new WeatherBundle(23.3, 10.0, 20, 0, true));
+               .Returns(new WeatherBundle(23.3, 10.0, 20, 0, true, Array.Empty<HourlyForecastPoint>(), default));
         var vm = VmWith(gateway);
 
         await vm.LoadCommand.ExecuteAsync(null);
@@ -49,7 +49,7 @@ public class CurrentConditionsViewModelTests
     {
         var gateway = Substitute.For<IWeatherGateway>();
         gateway.GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>())
-               .Returns(new WeatherBundle(26.5, 12.6, 40, 2, false)); // weatherCode 2 (partly cloudy), is_day night
+               .Returns(new WeatherBundle(26.5, 12.6, 40, 2, false, Array.Empty<HourlyForecastPoint>(), default)); // weatherCode 2 (partly cloudy), is_day night
         var vm = VmWith(gateway);
 
         await vm.LoadCommand.ExecuteAsync(null);
@@ -66,7 +66,7 @@ public class CurrentConditionsViewModelTests
     {
         var gateway = Substitute.For<IWeatherGateway>();
         gateway.GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>())
-               .Returns(new WeatherBundle(26.5, 12.6, 40, null, true)); // weatherCode absent -> Unknown; is_day day
+               .Returns(new WeatherBundle(26.5, 12.6, 40, null, true, Array.Empty<HourlyForecastPoint>(), default)); // weatherCode absent -> Unknown; is_day day
         var logger = new CapturingLogger<CurrentConditionsViewModel>();
         var vm = new CurrentConditionsViewModel(gateway, new WeatherConditionMapper(), logger);
 
@@ -83,7 +83,7 @@ public class CurrentConditionsViewModelTests
     {
         var gateway = Substitute.For<IWeatherGateway>();
         gateway.GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>())
-               .Returns(new WeatherBundle(26.5, 12.6, 40, 0, null)); // clear; is_day absent -> day variant
+               .Returns(new WeatherBundle(26.5, 12.6, 40, 0, null, Array.Empty<HourlyForecastPoint>(), default)); // clear; is_day absent -> day variant
         var logger = new CapturingLogger<CurrentConditionsViewModel>();
         var vm = new CurrentConditionsViewModel(gateway, new WeatherConditionMapper(), logger);
 

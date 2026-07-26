@@ -5,6 +5,37 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-26
 
 ### Added
+- **Widened the Open-Meteo seam for the hourly series (`timezone=auto`)** (Story #69) — the second
+  Hourly Forecast slice: one `GetWeather` fetch now returns the full hourly series in the Location's
+  local wall clock alongside Current Conditions, so the two views are consistent by construction (PRD
+  "fetch coupling"). This lands the Gateway half that Story #68's pure `HourlyWindow` was waiting on —
+  the window can now be computed from real fetched hours rather than test fixtures.
+  - **`WeatherBundle` extended additively** — gains `Hourly` (`IReadOnlyList<HourlyForecastPoint>`,
+    never null) and `LocalNow` (the Location's current wall-clock time). No existing field was removed
+    or repurposed and `IWeatherGateway`'s signature is unchanged, so every prior caller and Feature
+    contract is preserved; existing current-conditions tests moved to the widened 7-arg bundle with
+    behaviour unchanged.
+  - **`OpenMeteoGateway` requests `timezone=auto&forecast_days=2`** and the four hourly fields
+    (`temperature_2m,weather_code,precipitation_probability,is_day`), keeping the current fields and the
+    pinned canonical units. `timezone=auto` (ADR-0002) is what makes the returned timestamps the
+    Location's own wall clock, so no in-app timezone database or DST arithmetic is needed downstream.
+  - **Timestamps parse to `Kind=Unspecified` wall clock (Seam 2)** — `current.time` and each
+    `hourly.time[]` are parsed with `InvariantCulture` + `DateTimeStyles.None`, deliberately applying
+    **no** device timezone/locale shift, so the same payload yields identical local hours regardless of
+    the machine the code runs on. `current.time` becomes the bundle's `LocalNow`.
+  - **Fail closed on a malformed hourly series** — the five hourly arrays must all be present and
+    equal-length to `time[]`, and the hourly units are pinned on the wire (°C / %); a missing or
+    mismatched-length array throws `WeatherUnavailableException` (never an `IndexOutOfRangeException`)
+    after an Error log. A `null` element in a value array soft-passes as a null field (never a fetch
+    failure); the current-hour rain-chance logic is unchanged.
+  - **Security — endpoint-only logging** — every `_logger` call logs `BaseUrl` (scheme+host+path) +
+    `Location.Label`, never the coordinate-bearing url; the url is used only for the actual `GetAsync`.
+    This keeps the Location's latitude/longitude out of the log sink. Requests are asserted over HTTPS.
+  - Covered by widened Tier-1 recorded-replay tests: the widened request fields + HTTPS scheme, full
+    series + `LocalNow` projection, fail-closed on short/missing hourly arrays and non-canonical hourly
+    units, the null-element soft-passthrough, projection over a committed genuine live `timezone=auto`
+    capture (`openmeteo-tzauto.json`), Seam 2 culture-and-device-timezone invariance, and
+    no-geolocation-in-logs. $0, every commit.
 - **Hourly Forecast — pure `HourlyWindow` + `HourlyForecastPoint`** (Story #68) — the first slice of
   the Hourly Forecast feature (ADO #45), landed as pure Core domain logic ahead of any Gateway or UI
   wiring so the perceptual-day window is nailed down and trivially testable in isolation.
