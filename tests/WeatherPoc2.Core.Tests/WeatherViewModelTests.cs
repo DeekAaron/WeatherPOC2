@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using WeatherPoc2.Core.Navigation;
 using WeatherPoc2.Core.ViewModels;
 using WeatherPoc2.Core.Weather;
 using Xunit;
@@ -10,11 +11,26 @@ public class WeatherViewModelTests
 {
     private static DateTime Local(int h) => new(2026, 7, 22, h, 0, 0, DateTimeKind.Unspecified);
 
-    private static WeatherViewModel Vm(IWeatherGateway gateway)
+    private static ILoadedLocation LoadedWith(Location? location)
     {
+        var holder = Substitute.For<ILoadedLocation>();
+        holder.Current.Returns(location);
+        return holder;
+    }
+
+    private static WeatherViewModel Vm(
+        IWeatherGateway gateway,
+        ILoadedLocation? loaded = null,
+        INavigator? navigator = null)
+    {
+        // Feature 3: the coordinator fetches for the loaded Location — default a resolved one so the
+        // fetch-path tests still exercise a real fetch (they no longer depend on a hard-coded London).
+        loaded ??= LoadedWith(Location.LondonGb);
         var current = new CurrentConditionsViewModel(new WeatherConditionMapper(), NullLogger<CurrentConditionsViewModel>.Instance);
         var hourly = new HourlyForecastViewModel(new WeatherConditionMapper(), new HourlyWindow(), NullLogger<HourlyForecastViewModel>.Instance);
-        return new WeatherViewModel(gateway, current, hourly, NullLogger<WeatherViewModel>.Instance);
+        return new WeatherViewModel(
+            gateway, loaded, navigator ?? Substitute.For<INavigator>(), current, hourly,
+            NullLogger<WeatherViewModel>.Instance);
     }
 
     private static WeatherBundle SampleBundle() => new(
@@ -51,5 +67,30 @@ public class WeatherViewModelTests
         Assert.Empty(vm.HourlyForecast.Entries);
         Assert.Equal("Couldn't reach the weather service — check your connection and try again.", vm.ErrorMessage);
         Assert.False(vm.IsLoading);
+    }
+
+    [Fact]
+    public async Task Load_does_not_fetch_when_no_location_is_loaded()
+    {
+        // Launch state: nothing loaded (search is shown first) — the coordinator no-ops (Seam 2 defensive path).
+        var gateway = Substitute.For<IWeatherGateway>();
+        var vm = Vm(gateway, LoadedWith(null));
+
+        await vm.LoadCommand.ExecuteAsync(null);
+
+        await gateway.DidNotReceive().GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>());
+        Assert.Null(vm.ErrorMessage);
+        Assert.False(vm.IsLoading);
+    }
+
+    [Fact]
+    public async Task OpenSearch_navigates_to_the_search_screen()
+    {
+        var navigator = Substitute.For<INavigator>();
+        var vm = Vm(Substitute.For<IWeatherGateway>(), navigator: navigator);
+
+        await vm.OpenSearchCommand.ExecuteAsync(null);
+
+        await navigator.Received(1).GoToSearchAsync();
     }
 }

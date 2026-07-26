@@ -20,19 +20,32 @@ Early build. Delivered so far:
   into the typed `WeatherUnavailableException`, always after logging the endpoint and outcome — so a
   partial, fabricated, or wrong-unit reading never reaches the app. The icon hints are lenient: an
   absent `weather_code`/`is_day` flows through as `null` (resolved downstream by the mapper) rather
-  than failing the fetch. Core also carries the
+  than failing the fetch. The Gateway also carries the **geocoding half** of the seam —
+  `SearchAsync(name)` resolves a typed name against Open-Meteo's geocoding endpoint into a list of
+  `SearchCandidate`s (label, region/country, coordinates), returning an empty list when nothing matches
+  (a plain "no matching places", not an error) and converting every failure into the typed
+  `LocationSearchUnavailableException` after logging — so the app can tell "no such place" apart from
+  "couldn't reach the service". Core also carries the
   display-only `CurrentConditionsViewModel` (CommunityToolkit.Mvvm): `Apply(bundle)` composes the
   bundle and the Weather Condition Mapper into the full displayable panel — temperature, chance of
   rain, wind speed, condition text, and a day/night icon — and `Clear()` blanks every field so no
   stale panel lingers. It no longer fetches: the `WeatherViewModel` coordinator (below) owns the single
-  fetch and calls `Apply`/`Clear` (surfacing the one friendly error itself on failure). The OS-agnostic
-  `AddWeatherPoc2Core` DI extension wires the whole graph up (named `HttpClient` with a
-  15 s timeout and 1 MB response cap, singleton gateway, the pure stateless singletons mapper and
-  `HourlyWindow`, and the `WeatherViewModel` coordinator plus its two display-only children as
-  transients).
+  fetch and calls `Apply`/`Clear` (surfacing the one friendly error itself on failure). Core also
+  carries the **`LocationSearchViewModel`** — search, no-match and error handling, and
+  select-a-candidate -> mint a `Location` -> set the shared loaded-Location holder -> navigate — over
+  two small MAUI-free seams it introduces: `ILoadedLocation` (an in-memory holder of the one currently
+  loaded Location, no persistence yet) and `INavigator` (a navigation abstraction the app head
+  implements over Shell). The OS-agnostic `AddWeatherPoc2Core` DI extension wires the whole graph up
+  (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway, the pure stateless
+  singletons mapper and `HourlyWindow`, singleton `ILoadedLocation`, and the `WeatherViewModel`
+  coordinator plus its two display-only children and the `LocationSearchViewModel` as transients).
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
-  `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
-  Current Conditions page that renders the Layout C panel — a weather icon, condition text and
+  `AddWeatherPoc2Core`, supplies the `INavigator` Shell implementation (`MauiNavigator`), and registers
+  the pages + shell, and an `AppShell` that routes between a **Location Search** screen (the launch
+  default — with nothing loaded the app opens on Search) and the Current Conditions page that fetches
+  the currently loaded Location's conditions on appearing (fetch-on-load is the only refresh trigger for
+  now), carries an always-available magnifying-glass toolbar action back to Search, and renders the
+  Layout C panel plus the horizontal Hourly Forecast strip — a weather icon, condition text and
   temperature header above stacked chance-of-rain and wind-speed rows — or a friendly error, via
   MVVM bindings. (The page's original fetch-on-launch wiring binds `LoadCommand`/`ErrorMessage`/
   `IsLoading`, which the now display-only ViewModel no longer exposes as of Story #71; it is rewired to
@@ -67,8 +80,8 @@ Early build. Delivered so far:
   come are the on-screen Hourly Forecast strip View and the Current Conditions page rewire onto this
   coordinator.
 
-The remaining domain modules (the rest of the Hourly Forecast, Location Search, Search History,
-Favourites, Units, persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
+The remaining domain modules (Search History, Favourites, Units, persistence, launch resolver) are
+not built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
 scheduled path, never per-commit.
