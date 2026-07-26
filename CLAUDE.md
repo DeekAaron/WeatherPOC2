@@ -56,8 +56,8 @@ Built so far:
   15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, singleton `WeatherConditionMapper`,
   transient ViewModel). The ViewModel is **display-only** (Story #71 — it no longer fetches or owns
   `IWeatherGateway`/`LoadCommand`/`ErrorMessage`/`IsLoading`; its ctor is now `WeatherConditionMapper` +
-  `ILogger`). A parent `WeatherViewModel` coordinator (a later story) owns the single `GetWeather` call
-  and drives the panel through two synchronous methods: `Apply(WeatherBundle)` composes the widened
+  `ILogger`). A parent `WeatherViewModel` coordinator (Story #73, `ViewModels/`) owns the single
+  `GetWeather` call and drives the panel through two synchronous methods: `Apply(WeatherBundle)` composes the widened
   bundle and the `WeatherConditionMapper` into the full displayable panel — `TemperatureDisplay`,
   `ChanceOfRainDisplay`, `WindSpeedDisplay`, `ConditionText`, and `IconSource` (`{iconKey}.png`) —
   mapping `CurrentWeatherCode`/`IsDay` and logging a Warning on each lenient fall-back (unrecognized/
@@ -138,9 +138,11 @@ runner cannot build either desktop head), so the automated suite is Core Tier-1 
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
 the Feature's CI setup. The Hourly Forecast is now underway — its pure `HourlyWindow` + `HourlyForecastPoint`
 slice and the widened Gateway hourly series (`WeatherBundle.Hourly` + `LocalNow`, `timezone=auto`) have
-landed, `CurrentConditionsViewModel` is now display-only (Story #71), and the display-only
-`HourlyForecastViewModel` strip cells have landed (Story #72), but the shared-fetch `WeatherViewModel`
-coordinator (which will DI-register and drive both display ViewModels) and the Hourly Forecast View are
+landed, `CurrentConditionsViewModel` is now display-only (Story #71), the display-only
+`HourlyForecastViewModel` strip cells have landed (Story #72), and the shared-fetch `WeatherViewModel`
+coordinator that owns the single fetch and drives both display ViewModels has landed (Story #73) — but
+it, like both child ViewModels, is not yet DI-registered in `AddWeatherPoc2Core`, and the DI wiring, the
+Hourly Forecast View, and the `CurrentConditionsPage` rewire (off the dangling Story-#71 bindings) are
 not built yet. The remaining
 domain modules from `PRD.md` (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet.
