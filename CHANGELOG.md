@@ -5,6 +5,20 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-26
 
 ### Added
+- **DI registration of the Hourly Forecast coordinator graph** (Story #74) — `AddWeatherPoc2Core` now
+  wires the ViewModels built over Stories #71–#73, closing the gap those stories deliberately left open.
+  Until now the `WeatherViewModel` coordinator and both child view-models were built and Tier-1 tested
+  but never registered, so the container could not resolve them.
+  - **`HourlyWindow` joins `WeatherConditionMapper` as a pure stateless singleton** — both are I/O-free
+    and hold no per-request state, so one shared instance is correct and cheapest.
+  - **The coordinator and both display-only children register as transients** — `WeatherViewModel`,
+    `CurrentConditionsViewModel`, and `HourlyForecastViewModel`. View-models are per-view scoped; a
+    transient lifetime matches how the MAUI head will construct them and keeps no view state alive past
+    its page. The container now resolves the `WeatherViewModel` coordinator with **both children
+    non-null**, which is the acceptance bar for this story.
+  - **Why now:** the coordinator graph was complete but unreachable through DI; this registration makes
+    it resolvable ahead of the on-screen wiring (the Hourly Forecast View and the `CurrentConditionsPage`
+    rewire) that a later story adds. No behaviour changed inside any view-model — this is wiring only.
 - **`WeatherViewModel` screen coordinator owning the single fetch** (Story #73) — the parent
   view-model that ties the Hourly Forecast feature together (Approach A / Spec D2). It owns the one
   `GetWeather` call and distributes the single returned `WeatherBundle` to both child view-models, so
