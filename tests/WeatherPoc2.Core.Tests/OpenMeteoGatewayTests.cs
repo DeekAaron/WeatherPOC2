@@ -482,6 +482,75 @@ public class OpenMeteoGatewayTests
     }
 
     [Fact]
+    public async Task GetWeatherAsync_local_timestamp_parse_and_window_are_identical_across_cultures()
+    {
+        // Story #70 (Seam 2 proof, complete): the offset-less local ISO strings must parse to the EXACT
+        // same Kind=Unspecified wall-clock values — and yield the byte-identical HourlyWindow — no matter
+        // the host CurrentCulture. Parse the same payload once under the invariant culture (baseline) and
+        // once under fr-FR (whose default date formatting differs), then assert full equality. This is
+        // the PRD "Location whose local time differs from the device's" case proven end-to-end.
+        var invariant = await ParseUnderCulture(CultureInfo.InvariantCulture);
+        var french = await ParseUnderCulture(new CultureInfo("fr-FR"));
+
+        // AC1: current.time and EVERY hourly timestamp parse to the exact expected wall clock — and to
+        // the identical value under the flipped culture (no locale shift on any element).
+        var expectedNow = new DateTime(2026, 7, 22, 17, 30, 0, DateTimeKind.Unspecified);
+        var expectedHourly = new[]
+        {
+            new DateTime(2026, 7, 22, 16, 0, 0, DateTimeKind.Unspecified),
+            new DateTime(2026, 7, 22, 17, 0, 0, DateTimeKind.Unspecified),
+            new DateTime(2026, 7, 22, 18, 0, 0, DateTimeKind.Unspecified),
+        };
+        Assert.Equal(expectedNow, french.LocalNow);
+        Assert.Equal(expectedHourly, french.Hourly.Select(p => p.LocalTime));
+        Assert.Equal(invariant.LocalNow, french.LocalNow);
+        Assert.Equal(invariant.Hourly.Select(p => p.LocalTime), french.Hourly.Select(p => p.LocalTime));
+
+        // AC2: every parsed timestamp (local-now AND all hourly points) is Kind=Unspecified under the
+        // flipped culture — an Unspecified kind is the device-timezone-independence proof (a device-tz
+        // shift would have produced a Local/Utc kind or a different value).
+        Assert.Equal(DateTimeKind.Unspecified, french.LocalNow.Kind);
+        Assert.All(french.Hourly, p => Assert.Equal(DateTimeKind.Unspecified, p.LocalTime.Kind));
+
+        // AC3: the window computed from the parsed values is identical under the flipped culture — the
+        // WHOLE ordered slice, compared element-for-element against the invariant-culture baseline.
+        var invariantWindow = new HourlyWindow().Compute(invariant.Hourly, invariant.LocalNow);
+        var frenchWindow = new HourlyWindow().Compute(french.Hourly, french.LocalNow);
+        Assert.Equal(
+            invariantWindow.Select(p => p.LocalTime),
+            frenchWindow.Select(p => p.LocalTime));
+        Assert.Equal(
+            new[]
+            {
+                new DateTime(2026, 7, 22, 17, 0, 0, DateTimeKind.Unspecified),
+                new DateTime(2026, 7, 22, 18, 0, 0, DateTimeKind.Unspecified),
+            },
+            frenchWindow.Select(p => p.LocalTime));
+
+        // AC4 (no ToLocalTime/ToUniversalTime/AssumeLocal/AdjustToUniversal in the parse): proven
+        // structurally by the Kind=Unspecified invariant above — any of those conversions would have
+        // produced a Local/Utc kind or a shifted value, both of which are asserted against here.
+    }
+
+    // Parse the shared London payload with the process CurrentCulture pinned to `culture`, restoring the
+    // original afterwards. The Gateway reads CultureInfo.CurrentCulture at parse time, so this is the seam
+    // through which a culture-dependent parse would leak into the result if TryParseLocal were not invariant.
+    private static async Task<WeatherBundle> ParseUnderCulture(CultureInfo culture)
+    {
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = culture;
+            var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-conditions-london-200.json"));
+            return await GatewayWith(handler).GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
     public async Task GetWeatherAsync_never_logs_the_geolocation_coordinates_in_cleartext()
     {
         // Security AC — precise-geolocation not logged: no log line (success OR fail-closed path) may
