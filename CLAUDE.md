@@ -67,13 +67,22 @@ Built so far:
   of rain); because the widened Gateway already asserts both the °C and km/h unit pins and resolves the
   current hour in `hourly.time[]`, a returned full bundle is itself the unit-aware + current-hour
   assertion (the `InRange` checks are sanity bands atop that guarantee).
-  `WeatherBundle` now carries the **full Current Conditions payload** — Temperature and Wind Speed in
-  canonical units (°C, km/h) and the current-hour Chance of Rain as strict fail-closed measures, plus
-  the nullable `CurrentWeatherCode`/`IsDay` icon hints — and the Gateway widens its request
-  accordingly (`current=temperature_2m,wind_speed_10m,weather_code,is_day&hourly=precipitation_probability`,
+  `WeatherBundle` now carries the **full Current Conditions payload plus the hourly series** — Temperature
+  and Wind Speed in canonical units (°C, km/h) and the current-hour Chance of Rain as strict fail-closed
+  measures, the nullable `CurrentWeatherCode`/`IsDay` icon hints, and (Story #69, added additively — no
+  field removed or repurposed) `Hourly` (`IReadOnlyList<HourlyForecastPoint>`, never null) and `LocalNow`
+  (the Location's wall clock parsed from `current.time`, `Kind=Unspecified` per ADR-0002). The Gateway
+  widens its request accordingly (`current=temperature_2m,wind_speed_10m,weather_code,is_day`,
+  `hourly=temperature_2m,weather_code,precipitation_probability,is_day`, `timezone=auto&forecast_days=2`,
   both units pinned on the wire), asserts the km/h unit alongside the °C pin, matches the current-hour
-  precipitation by top-of-hour truncation, and fails closed (never `IndexOutOfRangeException`) on a
-  mismatched-length hourly array; the `IWeatherGateway` signature is unchanged.
+  precipitation by top-of-hour truncation, parses `current.time`/`hourly.time[]` invariantly to
+  `Kind=Unspecified` wall-clock DateTimes (no device tz/locale shift), validates the five hourly arrays
+  are present and equal-length and pins the hourly units (°C / %) on the wire — failing closed as
+  `WeatherUnavailableException` (never `IndexOutOfRangeException`) on a mismatched-length or missing
+  hourly array — and projects the `HourlyForecastPoint` list (a null element in a value array soft-passes
+  as a null field); the `IWeatherGateway` signature is unchanged. A **security control** keeps every
+  `_logger` call to the endpoint only — `BaseUrl` (scheme+host+path) + `Location.Label`, never the
+  coordinate-bearing url — so the Location's latitude/longitude stay out of the log sink.
   Core also carries the pure **Weather Condition Mapper** (`WeatherConditionMapper`,
   `WeatherConditionResult`, the `WeatherCondition` enum, and `WeatherIconKeys`) — a deterministic,
   I/O-free `Map(weatherCode, isDay)` that collapses Open-Meteo's numeric WMO codes onto the curated
@@ -88,8 +97,9 @@ Built so far:
   computed purely from the already-local timestamps ADR-0002's `timezone=auto` guarantees — it takes
   `localNow` as a parameter (no device clock) and filters the actual returned local hours, so a
   DST-transition day (a 23- or 25-hour day) is handled naturally without ever assuming a fixed 24. The
-  Gateway does not yet emit this hourly series and no ViewModel/View consumes the window yet — those are
-  later Hourly Forecast slices. Covered by `HourlyWindowTests` (Tier-1, $0): mid-afternoon, pre-dawn, the
+  Gateway now emits this hourly series (Story #69 — `WeatherBundle.Hourly` + `LocalNow`), but no
+  ViewModel/View consumes the window yet — that is a later Hourly Forecast slice. Covered by
+  `HourlyWindowTests` (Tier-1, $0): mid-afternoon, pre-dawn, the
   05:00-hour single entry, the 06:00 reopen, never-past-hours, and the DST short-day case.
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
@@ -110,6 +120,7 @@ runner cannot build either desktop head), so the automated suite is Core Tier-1 
 (every commit) plus the single Tier-2 live drift guard (scheduled, never per-commit). No pipeline or
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
 the Feature's CI setup. The Hourly Forecast is now underway — its pure `HourlyWindow` + `HourlyForecastPoint`
-slice has landed, but the Gateway hourly series, ViewModel, and View are not built yet. The remaining
+slice and the widened Gateway hourly series (`WeatherBundle.Hourly` + `LocalNow`, `timezone=auto`) have
+landed, but the Hourly Forecast ViewModel and View are not built yet. The remaining
 domain modules from `PRD.md` (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet.

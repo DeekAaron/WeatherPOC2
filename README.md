@@ -45,8 +45,10 @@ Early build. Delivered so far:
   nullable measures) and a pure `HourlyWindow.Compute(series, localNow)` that returns the hours from
   now to the next upcoming 05:00 local — inclusive of 05:00, never past hours. It reads no device clock
   and assumes no fixed 24 hours, so a daylight-saving transition day is handled by simply filtering the
-  hours the forecast actually returned. The Gateway hourly series and the on-screen forecast strip come
-  in later slices.
+  hours the forecast actually returned. The Gateway now emits that hourly series: one `GetWeather` fetch
+  requests `timezone=auto` and returns the full local-wall-clock series (`WeatherBundle.Hourly` plus a
+  `LocalNow` for the Location's current hour) alongside Current Conditions, so the two are consistent by
+  construction. The on-screen forecast strip comes in a later slice.
 
 The remaining domain modules (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
