@@ -5,6 +5,28 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-26
 
 ### Added
+- **`WeatherViewModel` screen coordinator owning the single fetch** (Story #73) — the parent
+  view-model that ties the Hourly Forecast feature together (Approach A / Spec D2). It owns the one
+  `GetWeather` call and distributes the single returned `WeatherBundle` to both child view-models, so
+  Current Conditions and the Hourly Forecast are **mutually consistent by construction** — they can
+  never show data from two different fetches.
+  - **`LoadAsync` (`LoadCommand`)** — the sole fetch: sets `IsLoading`, awaits
+    `IWeatherGateway.GetWeatherAsync(Location.LondonGb, ct)` (this Feature loads on page-appear only;
+    the load/focus/manual refresh policy is Feature 9), then calls `CurrentConditions.Apply(bundle)`
+    and `HourlyForecast.Apply(bundle)`. Async/await with a `CancellationToken` throughout (Principle #4);
+    `IsLoading` is cleared in a `finally` on both the success and failure paths.
+  - **Fail-visible single error** (Principle #1, Spec D3) — on `WeatherUnavailableException` it clears
+    **both** children (`Clear()`) so no stale or partial panel/strip reads as current, and surfaces one
+    fixed friendly message (`ErrorMessage`, the Technical-Context user-feedback copy). The Gateway has
+    already logged the diagnostic detail, so the coordinator surfaces user-facing copy only.
+  - **Not yet wired** — like the two child view-models it is deliberately **not** registered in
+    `AddWeatherPoc2Core` and not bound to a View; the DI registration and the on-screen wiring (the
+    Hourly Forecast View and the `CurrentConditionsPage` rewire off the dangling Story-#71 bindings)
+    land in later stories. **Why build it now anyway:** the coordinator's fetch-and-distribute logic is
+    pure Core behaviour testable in the Tier-1 suite ($0, no MAUI SDK) ahead of the desktop wiring the
+    AFK runner cannot build.
+  - Covered by `WeatherViewModelTests` (Tier-1, $0): one fetch populates both children, and the failure
+    path clears both children and shows the friendly error with `IsLoading` cleared.
 - **Hourly Forecast strip view-model (`HourlyForecastViewModel` + `HourlyForecastItem`)** (Story #72) —
   the display-only child that turns the fetched hourly series into on-screen strip cells, the presentation
   half of the Hourly Forecast whose pure `HourlyWindow` (Story #68) and Gateway series (Story #69) already

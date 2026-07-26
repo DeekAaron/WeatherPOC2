@@ -24,7 +24,7 @@ Early build. Delivered so far:
   display-only `CurrentConditionsViewModel` (CommunityToolkit.Mvvm): `Apply(bundle)` composes the
   bundle and the Weather Condition Mapper into the full displayable panel — temperature, chance of
   rain, wind speed, condition text, and a day/night icon — and `Clear()` blanks every field so no
-  stale panel lingers. It no longer fetches: a later `WeatherViewModel` coordinator owns the single
+  stale panel lingers. It no longer fetches: the `WeatherViewModel` coordinator (below) owns the single
   fetch and calls `Apply`/`Clear` (surfacing the one friendly error itself on failure). The OS-agnostic
   `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
   15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
@@ -55,8 +55,14 @@ Early build. Delivered so far:
   construction. A display-only `HourlyForecastViewModel` now turns that series into the strip: `Apply(bundle)`
   runs the window, maps each hour's day/night icon, and builds one immutable cell per hour (time, icon,
   whole-degree temperature, chance of rain), flagging the current hour and rendering "—" for any absent
-  measure; `Clear()` empties it. It is a passive display target, so the shared-fetch coordinator and the
-  on-screen strip View that binds to it come in a later slice.
+  measure; `Clear()` empties it.
+- **`WeatherViewModel` screen coordinator** — the parent view-model that owns the single `GetWeather`
+  fetch and distributes the one returned bundle to both child view-models (`CurrentConditions.Apply` /
+  `HourlyForecast.Apply`), so Current Conditions and the Hourly Forecast are consistent by construction.
+  On a fetch failure it clears both children and surfaces one friendly error, with `IsLoading` tracking
+  the in-flight fetch. It is not yet DI-registered or bound to a View — the DI wiring, the on-screen
+  Hourly Forecast strip View, and the Current Conditions page rewire onto this coordinator come in a
+  later slice.
 
 The remaining domain modules (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
