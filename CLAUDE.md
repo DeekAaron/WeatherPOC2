@@ -53,8 +53,11 @@ Built so far:
   `WeatherUnavailableException`, `Location`, `WeatherBundle`), the display-only
   `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), and
   the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
-  15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, singleton `WeatherConditionMapper`,
-  transient ViewModel). The ViewModel is **display-only** (Story #71 — it no longer fetches or owns
+  15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, the pure stateless singletons
+  `WeatherConditionMapper` and `HourlyWindow`, and the three ViewModels — the `WeatherViewModel`
+  coordinator plus its two display-only children `CurrentConditionsViewModel` and
+  `HourlyForecastViewModel` — as transients (Story #74 DI registration)). The ViewModel is
+  **display-only** (Story #71 — it no longer fetches or owns
   `IWeatherGateway`/`LoadCommand`/`ErrorMessage`/`IsLoading`; its ctor is now `WeatherConditionMapper` +
   `ILogger`). A parent `WeatherViewModel` coordinator (Story #73, `ViewModels/`) owns the single
   `GetWeather` call and drives the panel through two synchronous methods: `Apply(WeatherBundle)` composes the widened
@@ -108,8 +111,9 @@ Built so far:
   `ChanceOfRainDisplay` %), flagging the current hour `IsNow`; a null temperature/chance renders "—" and
   logs a Warning (fail-visible, Principle #1), an unrecognized/absent code or absent `is_day` also logs a
   Warning, and `Clear()` empties the strip on the coordinator's failure path. Its ctor is
-  `WeatherConditionMapper` + `HourlyWindow` + `ILogger`; like the `WeatherViewModel` coordinator it is not
-  yet DI-registered in `AddWeatherPoc2Core` or bound to a View. Covered by
+  `WeatherConditionMapper` + `HourlyWindow` + `ILogger`; as of Story #74 it — like the `WeatherViewModel`
+  coordinator and `CurrentConditionsViewModel` — is now DI-registered in `AddWeatherPoc2Core` (all three
+  as transients, `HourlyWindow` as a singleton), though not yet bound to a View. Covered by
   `HourlyWindowTests` (Tier-1, $0): mid-afternoon, pre-dawn, the
   05:00-hour single entry, the 06:00 reopen, never-past-hours, and the DST short-day case; and by
   `HourlyForecastViewModelTests` (Tier-1, $0): per-hour formatting incl. the night-icon variant, the
@@ -139,10 +143,12 @@ schedule wiring lives in the repo yet — the trait makes the split possible; th
 the Feature's CI setup. The Hourly Forecast is now underway — its pure `HourlyWindow` + `HourlyForecastPoint`
 slice and the widened Gateway hourly series (`WeatherBundle.Hourly` + `LocalNow`, `timezone=auto`) have
 landed, `CurrentConditionsViewModel` is now display-only (Story #71), the display-only
-`HourlyForecastViewModel` strip cells have landed (Story #72), and the shared-fetch `WeatherViewModel`
-coordinator that owns the single fetch and drives both display ViewModels has landed (Story #73) — but
-it, like both child ViewModels, is not yet DI-registered in `AddWeatherPoc2Core`, and the DI wiring, the
-Hourly Forecast View, and the `CurrentConditionsPage` rewire (off the dangling Story-#71 bindings) are
-not built yet. The remaining
+`HourlyForecastViewModel` strip cells have landed (Story #72), the shared-fetch `WeatherViewModel`
+coordinator that owns the single fetch and drives both display ViewModels has landed (Story #73), and the
+whole coordinator graph is now DI-registered in `AddWeatherPoc2Core` (Story #74 — `HourlyWindow` joins
+`WeatherConditionMapper` as a pure stateless singleton; the coordinator and both child ViewModels register
+as transients, so the container resolves the coordinator with both children non-null). Still to come: the
+Hourly Forecast View and the `CurrentConditionsPage` rewire (off the dangling Story-#71 bindings) onto the
+coordinator. The remaining
 domain modules from `PRD.md` (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet.

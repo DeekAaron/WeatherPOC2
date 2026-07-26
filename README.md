@@ -26,8 +26,10 @@ Early build. Delivered so far:
   rain, wind speed, condition text, and a day/night icon — and `Clear()` blanks every field so no
   stale panel lingers. It no longer fetches: the `WeatherViewModel` coordinator (below) owns the single
   fetch and calls `Apply`/`Clear` (surfacing the one friendly error itself on failure). The OS-agnostic
-  `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
-  15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
+  `AddWeatherPoc2Core` DI extension wires the whole graph up (named `HttpClient` with a
+  15 s timeout and 1 MB response cap, singleton gateway, the pure stateless singletons mapper and
+  `HourlyWindow`, and the `WeatherViewModel` coordinator plus its two display-only children as
+  transients).
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
   Current Conditions page that renders the Layout C panel — a weather icon, condition text and
@@ -60,9 +62,10 @@ Early build. Delivered so far:
   fetch and distributes the one returned bundle to both child view-models (`CurrentConditions.Apply` /
   `HourlyForecast.Apply`), so Current Conditions and the Hourly Forecast are consistent by construction.
   On a fetch failure it clears both children and surfaces one friendly error, with `IsLoading` tracking
-  the in-flight fetch. It is not yet DI-registered or bound to a View — the DI wiring, the on-screen
-  Hourly Forecast strip View, and the Current Conditions page rewire onto this coordinator come in a
-  later slice.
+  the in-flight fetch. As of Story #74 the coordinator and both children are DI-registered in
+  `AddWeatherPoc2Core` (so the container resolves the coordinator with both children non-null); still to
+  come are the on-screen Hourly Forecast strip View and the Current Conditions page rewire onto this
+  coordinator.
 
 The remaining domain modules (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
