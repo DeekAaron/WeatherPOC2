@@ -28,6 +28,7 @@ public static class ServiceCollectionExtensions
             c.MaxResponseContentBufferSize = 1_048_576;
         });
         services.AddSingleton<IWeatherGateway, OpenMeteoGateway>();
+        services.AddSingleton<WeatherConditionMapper>();            // pure + stateless
         services.AddSingleton<HourlyWindow>();                      // pure + stateless
         services.AddSingleton<ILoadedLocation, LoadedLocation>();   // shared across the app (search flow ↔ Current Conditions)
         services.AddTransient<CurrentConditionsViewModel>();
