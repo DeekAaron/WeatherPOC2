@@ -26,6 +26,22 @@ public class ServiceRegistrationTests
     }
 
     [Fact]
+    public void AddWeatherPoc2Core_resolves_the_weather_view_model_graph()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddWeatherPoc2Core();
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        var vm = provider.GetRequiredService<WeatherViewModel>();
+        Assert.NotNull(vm);
+        Assert.NotNull(vm.CurrentConditions);
+        Assert.NotNull(vm.HourlyForecast);
+        Assert.NotNull(provider.GetRequiredService<HourlyWindow>());
+    }
+
+    [Fact]
     public void AddWeatherPoc2Core_registers_the_weather_condition_mapper()
     {
         var services = new ServiceCollection();

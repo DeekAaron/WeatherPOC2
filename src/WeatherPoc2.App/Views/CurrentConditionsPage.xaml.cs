@@ -4,9 +4,9 @@ namespace WeatherPoc2.App.Views;
 
 public partial class CurrentConditionsPage : ContentPage
 {
-    private readonly CurrentConditionsViewModel _viewModel;
+    private readonly WeatherViewModel _viewModel;
 
-    public CurrentConditionsPage(CurrentConditionsViewModel viewModel)
+    public CurrentConditionsPage(WeatherViewModel viewModel)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -16,7 +16,7 @@ public partial class CurrentConditionsPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        // Fetch-on-load — the only refresh trigger in Feature 1 (focus/manual are Feature 9).
+        // Fetch-on-load — the only refresh trigger in this Feature (focus/manual are Feature 9).
         if (_viewModel.LoadCommand.CanExecute(null))
             await _viewModel.LoadCommand.ExecuteAsync(null);
     }

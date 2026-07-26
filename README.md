@@ -21,17 +21,23 @@ Early build. Delivered so far:
   partial, fabricated, or wrong-unit reading never reaches the app. The icon hints are lenient: an
   absent `weather_code`/`is_day` flows through as `null` (resolved downstream by the mapper) rather
   than failing the fetch. Core also carries the
-  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), which composes the bundle and the Weather
-  Condition Mapper into the full displayable panel — temperature, chance of rain, wind speed,
-  condition text, and a day/night icon — or, on failure, clears every field and shows one friendly
-  error. The OS-agnostic `AddWeatherPoc2Core` DI extension wires it all up (named `HttpClient` with a
-  15 s timeout and 1 MB response cap, singleton gateway, singleton mapper, transient ViewModel).
+  display-only `CurrentConditionsViewModel` (CommunityToolkit.Mvvm): `Apply(bundle)` composes the
+  bundle and the Weather Condition Mapper into the full displayable panel — temperature, chance of
+  rain, wind speed, condition text, and a day/night icon — and `Clear()` blanks every field so no
+  stale panel lingers. It no longer fetches: the `WeatherViewModel` coordinator (below) owns the single
+  fetch and calls `Apply`/`Clear` (surfacing the one friendly error itself on failure). The OS-agnostic
+  `AddWeatherPoc2Core` DI extension wires the whole graph up (named `HttpClient` with a
+  15 s timeout and 1 MB response cap, singleton gateway, the pure stateless singletons mapper and
+  `HourlyWindow`, and the `WeatherViewModel` coordinator plus its two display-only children as
+  transients).
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core` and registers the page + shell, and an `AppShell` that routes to a single
-  Current Conditions page which fetches London's conditions on launch (fetch-on-load is the only
-  refresh trigger for now) and renders the Layout C panel — a weather icon, condition text and
+  Current Conditions page that renders the Layout C panel — a weather icon, condition text and
   temperature header above stacked chance-of-rain and wind-speed rows — or a friendly error, via
-  MVVM bindings. The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/`
+  MVVM bindings. (The page's original fetch-on-launch wiring binds `LoadCommand`/`ErrorMessage`/
+  `IsLoading`, which the now display-only ViewModel no longer exposes as of Story #71; it is rewired to
+  the shared-fetch `WeatherViewModel` coordinator in a later story. This desktop head is not built on
+  the AFK runner.) The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/`
   (one per `WeatherIconKeys` member, registered as `MauiImage` and rasterized to `{key}.png` at
   build), so the mapper's icon key resolves to a bundled asset at runtime. Targets Mac Catalyst
   always, with the Windows head built only on a Windows host.
@@ -40,9 +46,29 @@ Early build. Delivered so far:
   curated `WeatherCondition` set, each carrying a human display name and a day/night icon-asset key
   drawn from the fixed 15-key `WeatherIconKeys` set. It does no I/O and no logging; an unrecognized
   or absent code falls back to `Unknown` and is flagged `Recognized: false` for the caller to log.
+- **Hourly Window** — the first slice of the Hourly Forecast, as pure Core logic: an
+  `HourlyForecastPoint` record (one forecast hour in canonical units, with a local wall-clock time and
+  nullable measures) and a pure `HourlyWindow.Compute(series, localNow)` that returns the hours from
+  now to the next upcoming 05:00 local — inclusive of 05:00, never past hours. It reads no device clock
+  and assumes no fixed 24 hours, so a daylight-saving transition day is handled by simply filtering the
+  hours the forecast actually returned. The Gateway now emits that hourly series: one `GetWeather` fetch
+  requests `timezone=auto` and returns the full local-wall-clock series (`WeatherBundle.Hourly` plus a
+  `LocalNow` for the Location's current hour) alongside Current Conditions, so the two are consistent by
+  construction. A display-only `HourlyForecastViewModel` now turns that series into the strip: `Apply(bundle)`
+  runs the window, maps each hour's day/night icon, and builds one immutable cell per hour (time, icon,
+  whole-degree temperature, chance of rain), flagging the current hour and rendering "—" for any absent
+  measure; `Clear()` empties it.
+- **`WeatherViewModel` screen coordinator** — the parent view-model that owns the single `GetWeather`
+  fetch and distributes the one returned bundle to both child view-models (`CurrentConditions.Apply` /
+  `HourlyForecast.Apply`), so Current Conditions and the Hourly Forecast are consistent by construction.
+  On a fetch failure it clears both children and surfaces one friendly error, with `IsLoading` tracking
+  the in-flight fetch. As of Story #74 the coordinator and both children are DI-registered in
+  `AddWeatherPoc2Core` (so the container resolves the coordinator with both children non-null); still to
+  come are the on-screen Hourly Forecast strip View and the Current Conditions page rewire onto this
+  coordinator.
 
-The remaining domain modules (Hourly Forecast, Location Search, Search History, Favourites, Units,
-persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
+The remaining domain modules (the rest of the Hourly Forecast, Location Search, Search History,
+Favourites, Units, persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
 scheduled path, never per-commit.
