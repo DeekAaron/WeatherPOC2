@@ -5,6 +5,18 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-26
 
 ### Added
+- **Seam 2 proof completed — local-timestamp parse is culture- and timezone-invariant** (Story #70) —
+  a single new Tier-1 recorded-replay test
+  (`GetWeatherAsync_local_timestamp_parse_and_window_are_identical_across_cultures`) that closes out the
+  Seam 2 contract established by Story #69. Story #69 already asserted the invariant parse; this proves
+  it end-to-end for the PRD case a *Location whose local time differs from the device's*: the same
+  captured London payload is parsed twice — once under `InvariantCulture`, once under `fr-FR` (whose
+  default date formatting differs) — and `current.time`, every `hourly.time[]` element, **and** the
+  resulting `HourlyWindow` slice are asserted byte-identical across both cultures, each timestamp
+  `Kind=Unspecified`. The `Unspecified` kind is itself the device-timezone-independence proof — any
+  `ToLocalTime`/`ToUniversalTime`/`AssumeLocal`/`AdjustToUniversal` in the parse would have produced a
+  `Local`/`Utc` kind or a shifted value, both asserted against (ADR-0002). No production code changed;
+  this is a test-only ratchet locking the invariance in. $0, every commit.
 - **Widened the Open-Meteo seam for the hourly series (`timezone=auto`)** (Story #69) — the second
   Hourly Forecast slice: one `GetWeather` fetch now returns the full hourly series in the Location's
   local wall clock alongside Current Conditions, so the two views are consistent by construction (PRD
