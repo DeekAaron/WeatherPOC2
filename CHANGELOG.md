@@ -4,6 +4,32 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 
 ## [Unreleased] - 2026-07-26
 
+### Added
+- **Hourly Forecast strip view-model (`HourlyForecastViewModel` + `HourlyForecastItem`)** (Story #72) —
+  the display-only child that turns the fetched hourly series into on-screen strip cells, the presentation
+  half of the Hourly Forecast whose pure `HourlyWindow` (Story #68) and Gateway series (Story #69) already
+  landed. It follows the same passive-display shape as the Story #71 `CurrentConditionsViewModel`: the
+  parent `WeatherViewModel` coordinator (a later story) pushes the shared `WeatherBundle` in via
+  `Apply(bundle)`; the view-model never fetches.
+  - **`Apply(bundle)`** runs the pure `HourlyWindow` over `bundle.Hourly`/`bundle.LocalNow`, maps each
+    windowed hour's icon through the pure `WeatherConditionMapper`, and rebuilds an
+    `ObservableCollection<HourlyForecastItem>` (variant A cell: `HH:00` time, `{iconKey}.png` icon,
+    whole-degree temperature, chance %). The collection is rebuilt rather than mutated, so the cells stay
+    immutable records with no per-item change notification. `Clear()` empties it on the coordinator's
+    failure path so no stale strip lingers.
+  - **Fail-visible gaps** (Technical-Context Overriding Principle #1) — a null hourly temperature or chance
+    renders the "—" placeholder and logs a Warning; an unrecognized/absent `weather_code` or absent
+    `is_day` also logs a Warning while the icon leniently falls back. The strip stays contiguous rather
+    than dropping a gappy hour. The current hour's cell is flagged `IsNow` for the "Now" treatment.
+  - **Not yet wired** — deliberately not registered in `AddWeatherPoc2Core` and not bound to a View; the
+    `WeatherViewModel` coordinator that will construct/drive it and the on-screen strip View land in later
+    stories. **Why build it now anyway:** landing the passive view-model separately keeps the strip's
+    formatting + windowing logic in the Tier-1 Core suite (pure, $0, no MAUI SDK) ahead of the desktop
+    wiring the AFK runner cannot build.
+  - Covered by `HourlyForecastViewModelTests` (Tier-1, $0): per-hour formatting including the night-icon
+    variant, the null-measure placeholder + Warning, entries replaced on each `Apply`, and `Clear`
+    emptying the collection.
+
 ### Changed
 - **`CurrentConditionsViewModel` demoted to display-only** (Story #71) — the Current Conditions
   view-model no longer fetches. It drops its `IWeatherGateway` dependency, the `LoadCommand`, and the

@@ -52,7 +52,11 @@ Early build. Delivered so far:
   hours the forecast actually returned. The Gateway now emits that hourly series: one `GetWeather` fetch
   requests `timezone=auto` and returns the full local-wall-clock series (`WeatherBundle.Hourly` plus a
   `LocalNow` for the Location's current hour) alongside Current Conditions, so the two are consistent by
-  construction. The on-screen forecast strip comes in a later slice.
+  construction. A display-only `HourlyForecastViewModel` now turns that series into the strip: `Apply(bundle)`
+  runs the window, maps each hour's day/night icon, and builds one immutable cell per hour (time, icon,
+  whole-degree temperature, chance of rain), flagging the current hour and rendering "—" for any absent
+  measure; `Clear()` empties it. It is a passive display target, so the shared-fetch coordinator and the
+  on-screen strip View that binds to it come in a later slice.
 
 The remaining domain modules (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet. The desktop build/launch proof is owned by a
