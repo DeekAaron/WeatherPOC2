@@ -50,17 +50,20 @@ Stack is **.NET 10 / C#** (SDK pinned via `global.json` at `10.0.100`). Solution
 Built so far:
 
 - `WeatherPoc2.Core` — the Open-Meteo weather seam (`OpenMeteoGateway`, `IWeatherGateway`,
-  `WeatherUnavailableException`, `Location`, `WeatherBundle`), the `CurrentConditionsViewModel`
-  (CommunityToolkit.Mvvm, fetch-on-load for `Location.LondonGb`, friendly fail-visible error), and
+  `WeatherUnavailableException`, `Location`, `WeatherBundle`), the display-only
+  `CurrentConditionsViewModel` (CommunityToolkit.Mvvm), and
   the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named `HttpClient` with a
   15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, singleton `WeatherConditionMapper`,
-  transient ViewModel). The ViewModel now composes the widened `WeatherBundle` and the
-  `WeatherConditionMapper` (a third ctor dependency alongside `IWeatherGateway` + `ILogger`) into the
-  full displayable panel — `TemperatureDisplay`, `ChanceOfRainDisplay`, `WindSpeedDisplay`,
-  `ConditionText`, and `IconSource` (`{iconKey}.png`) — mapping `CurrentWeatherCode`/`IsDay` on
-  success and logging a Warning on each lenient fall-back (unrecognized/absent code, null `is_day`);
-  on `WeatherUnavailableException` all five displays are cleared (no stale/partial panel) and only the
-  fixed friendly copy is surfaced. Tested by the
+  transient ViewModel). The ViewModel is **display-only** (Story #71 — it no longer fetches or owns
+  `IWeatherGateway`/`LoadCommand`/`ErrorMessage`/`IsLoading`; its ctor is now `WeatherConditionMapper` +
+  `ILogger`). A parent `WeatherViewModel` coordinator (a later story) owns the single `GetWeather` call
+  and drives the panel through two synchronous methods: `Apply(WeatherBundle)` composes the widened
+  bundle and the `WeatherConditionMapper` into the full displayable panel — `TemperatureDisplay`,
+  `ChanceOfRainDisplay`, `WindSpeedDisplay`, `ConditionText`, and `IconSource` (`{iconKey}.png`) —
+  mapping `CurrentWeatherCode`/`IsDay` and logging a Warning on each lenient fall-back (unrecognized/
+  absent code, null `is_day`); `Clear()` blanks all five displays (no stale/partial panel), which the
+  coordinator calls on `WeatherUnavailableException` alongside surfacing the fixed friendly copy itself.
+  Tested by the
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
   asserting the full widened `WeatherBundle` deserializes (temperature, wind speed, current-hour chance
@@ -107,7 +110,11 @@ Built so far:
   panel**: an `Image` (`IconSource`) + condition (`ConditionText`) + temperature (`TemperatureDisplay`)
   header grid above stacked `ChanceOfRainDisplay` / `WindSpeedDisplay` rows, plus the `IsLoading`
   indicator and `ErrorMessage`, firing `LoadCommand` on `OnAppearing` (MVVM-only, no code-behind
-  logic). The 15 weather-condition icons are self-authored SVGs under `Resources/Images/` (one per
+  logic). ⚠️ As of Story #71 the ViewModel is display-only, so the page's `LoadCommand`/`ErrorMessage`/
+  `IsLoading` bindings are now dangling — the page is rewired to the shared-fetch `WeatherViewModel`
+  coordinator (which fetches once and calls `Apply`/`Clear`) in a later story; this desktop head is not
+  built on the AFK runner (HITL platform-verification), so the transient break does not touch the Core
+  suite. The 15 weather-condition icons are self-authored SVGs under `Resources/Images/` (one per
   `WeatherIconKeys` member) registered via a `MauiImage` glob; the resizetizer rasterizes each to a
   `{key}.png` the `Image.Source` binding resolves at runtime. `WeatherIconAssetsTests` (in
   `WeatherPoc2.Core.Tests`) is the per-commit Tier-1 guard — pure source-tree file I/O, no MAUI SDK —
@@ -121,6 +128,8 @@ runner cannot build either desktop head), so the automated suite is Core Tier-1 
 schedule wiring lives in the repo yet — the trait makes the split possible; the schedule lands with
 the Feature's CI setup. The Hourly Forecast is now underway — its pure `HourlyWindow` + `HourlyForecastPoint`
 slice and the widened Gateway hourly series (`WeatherBundle.Hourly` + `LocalNow`, `timezone=auto`) have
-landed, but the Hourly Forecast ViewModel and View are not built yet. The remaining
+landed, and `CurrentConditionsViewModel` is now display-only (Story #71) ahead of the shared-fetch
+`WeatherViewModel` coordinator, but that coordinator, the Hourly Forecast ViewModel and the View are
+not built yet. The remaining
 domain modules from `PRD.md` (the rest of the Hourly Forecast, Location Search, Search History,
 Favourites, Units, persistence, launch resolver) are not built yet.
