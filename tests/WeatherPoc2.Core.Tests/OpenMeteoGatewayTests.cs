@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -234,17 +235,25 @@ public class OpenMeteoGatewayTests
     [Fact]
     public async Task GetWeatherAsync_requests_the_new_current_and_hourly_fields()
     {
-        // The widened request must ask Open-Meteo for wind speed, the icon-only hints, and the hourly
-        // precipitation series — and pin BOTH canonical units explicitly (never rely on API defaults).
+        // The widened Feature-4 request adds timezone=auto, forecast_days=2, and the full hourly series
+        // (temperature_2m,weather_code,precipitation_probability,is_day), keeping the current fields and
+        // pinning BOTH canonical units explicitly (never rely on API defaults).
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-conditions-london-200.json"));
         var gateway = GatewayWith(handler);
 
         await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
 
+        // Security AC — transport confidentiality: the request must be issued over HTTPS. A base-URL
+        // regression to http fails here, pinning coordinate confidentiality + payload integrity in transit.
+        Assert.Equal("https", handler.LastRequest?.RequestUri?.Scheme);
+
         var url = handler.LastRequest?.RequestUri?.ToString();
         Assert.NotNull(url);
+        Assert.StartsWith("https://", url);
         Assert.Contains("current=temperature_2m,wind_speed_10m,weather_code,is_day", url);
-        Assert.Contains("hourly=precipitation_probability", url);
+        Assert.Contains("hourly=temperature_2m,weather_code,precipitation_probability,is_day", url);
+        Assert.Contains("timezone=auto", url);
+        Assert.Contains("forecast_days=2", url);
         Assert.Contains("wind_speed_unit=kmh", url);
         Assert.Contains("temperature_unit=celsius", url);
     }
@@ -324,7 +333,9 @@ public class OpenMeteoGatewayTests
         // the strict numeric measures are still parsed.
         const string body = "{\"current_units\":{\"temperature_2m\":\"°C\",\"wind_speed_10m\":\"km/h\"}," +
             "\"current\":{\"time\":\"2026-07-22T17:00\",\"temperature_2m\":26.5,\"wind_speed_10m\":12.6}," +
-            "\"hourly\":{\"time\":[\"2026-07-22T17:00\"],\"precipitation_probability\":[0]}}";
+            "\"hourly_units\":{\"temperature_2m\":\"°C\",\"precipitation_probability\":\"%\"}," +
+            "\"hourly\":{\"time\":[\"2026-07-22T17:00\"],\"temperature_2m\":[18.5],\"weather_code\":[3]," +
+            "\"precipitation_probability\":[0],\"is_day\":[1]}}";
         var handler = new StubHttpMessageHandler(HttpStatusCode.OK, body);
         var gateway = GatewayWith(handler);
 
@@ -333,5 +344,161 @@ public class OpenMeteoGatewayTests
         Assert.Null(bundle.CurrentWeatherCode);
         Assert.Null(bundle.IsDay);
         Assert.Equal(26.5, bundle.CurrentTemperatureCelsius);
+    }
+
+    // ---- Feature 4: the widened timezone=auto hourly series (Story #69, Plan Task 3) ----
+
+    [Fact]
+    public async Task GetWeatherAsync_projects_the_full_hourly_series_and_local_now()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-conditions-london-200.json"));
+        var gateway = GatewayWith(handler);
+
+        var bundle = await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        Assert.Equal(new DateTime(2026, 7, 22, 17, 30, 0, DateTimeKind.Unspecified), bundle.LocalNow);
+        Assert.Equal(3, bundle.Hourly.Count);
+        Assert.Equal(new DateTime(2026, 7, 22, 16, 0, 0, DateTimeKind.Unspecified), bundle.Hourly[0].LocalTime);
+        Assert.Equal(19.0, bundle.Hourly[0].TemperatureCelsius);
+        Assert.Equal(3, bundle.Hourly[0].WeatherCode);
+        Assert.True(bundle.Hourly[0].IsDay);
+        Assert.Equal(5, bundle.Hourly[0].ChanceOfRainPercent);
+        Assert.Equal(2, bundle.Hourly[2].WeatherCode);               // 18:00 partly cloudy
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_fails_closed_when_a_new_hourly_array_is_shorter_than_time()
+    {
+        // Seam 1 (mismatched-length branch): temperature_2m[] shorter than time[] must fail closed
+        // — never IndexOutOfRange.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("hourly-temp-array-short-200.json"));
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_fails_closed_when_a_new_hourly_array_is_missing()
+    {
+        // Seam 1 (missing-array branch, distinct from the length branch above): the weather_code[]
+        // array is absent entirely from hourly. The presence check must fail closed —
+        // never NullReferenceException / IndexOutOfRangeException.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("hourly-weather-code-array-missing-200.json"));
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_fails_closed_when_hourly_units_are_not_canonical()
+    {
+        // Seam 1 (data-format, negative): hourly_units.temperature_2m is °F, not °C. The hourly-unit
+        // pin must fail closed — makes the °C / % contract falsifiable, not transitively assumed.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("wrong-hourly-unit-fahrenheit-200.json"));
+        var gateway = GatewayWith(handler);
+
+        await Assert.ThrowsAsync<WeatherUnavailableException>(
+            () => gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_soft_passes_a_null_hourly_element_in_a_non_current_hour()
+    {
+        // Seam 1 (soft-passthrough, at the Gateway boundary): the current hour (17:00) has a real
+        // precip (0, so the F2 current-hour chance step succeeds), while a later windowed hour (18:00)
+        // has precipitation_probability null. The fetch must SUCCEED and project the null element as a
+        // null ChanceOfRainPercent — never fail closed. Distinct from the current-hour strict-null case.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("hourly-null-precip-windowed-200.json"));
+        var gateway = GatewayWith(handler);
+
+        var bundle = await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        Assert.Equal(3, bundle.Hourly.Count);
+        Assert.Equal(0, bundle.Hourly[1].ChanceOfRainPercent);   // 17:00 current hour: real 0
+        Assert.Null(bundle.Hourly[2].ChanceOfRainPercent);       // 18:00 windowed hour: null soft-passed
+        Assert.Equal(18.0, bundle.Hourly[2].TemperatureCelsius); // other fields on the null-precip hour intact
+        Assert.Equal(2, bundle.Hourly[2].WeatherCode);
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_projects_the_committed_live_timezone_auto_capture()
+    {
+        // Seam 1 (d) external-seam proof: parse the REAL captured Open-Meteo timezone=auto payload
+        // (openmeteo-tzauto.json, London 2026-07-26) — the genuine wire shape from the real writer,
+        // not a hand-authored sample. Asserts the full projection + LocalNow over the real 48-length
+        // series, and that every projected timestamp is offset-less local wall-clock (Kind=Unspecified).
+        // Exact per-hour values are read from the committed capture (temp 20.7, weather_code 2 at 00:00).
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("openmeteo-tzauto.json"));
+        var gateway = GatewayWith(handler);
+
+        var bundle = await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        Assert.Equal(new DateTime(2026, 7, 26, 13, 30, 0, DateTimeKind.Unspecified), bundle.LocalNow);
+        Assert.Equal(DateTimeKind.Unspecified, bundle.LocalNow.Kind);
+        Assert.Equal(48, bundle.Hourly.Count);
+        Assert.Equal(new DateTime(2026, 7, 26, 0, 0, 0, DateTimeKind.Unspecified), bundle.Hourly[0].LocalTime);
+        Assert.Equal(20.7, bundle.Hourly[0].TemperatureCelsius);
+        Assert.Equal(2, bundle.Hourly[0].WeatherCode);
+        Assert.Equal(0, bundle.Hourly[0].ChanceOfRainPercent);   // 0 is a real value, not absence
+        Assert.False(bundle.Hourly[0].IsDay);                    // midnight -> is_day 0
+        Assert.All(bundle.Hourly, p => Assert.Equal(DateTimeKind.Unspecified, p.LocalTime.Kind));
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_parses_local_timestamps_invariant_to_culture_and_device_timezone()
+    {
+        // Seam 2: force a non-invariant culture whose default date formatting differs (fr-FR).
+        // The offset-less local strings must still parse to the exact Kind=Unspecified wall clock,
+        // and the window must be identical — no device-locale or device-timezone shift. The
+        // Kind=Unspecified invariant on EVERY parsed timestamp is the device-timezone-independence
+        // proof (a shift would produce a Local/Utc kind or a different value — both asserted against).
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("fr-FR");
+
+            var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-conditions-london-200.json"));
+            var gateway = GatewayWith(handler);
+
+            var bundle = await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+            var expectedNow = new DateTime(2026, 7, 22, 17, 30, 0, DateTimeKind.Unspecified);
+            Assert.Equal(expectedNow, bundle.LocalNow);
+            Assert.Equal(DateTimeKind.Unspecified, bundle.LocalNow.Kind);
+            Assert.Equal(new DateTime(2026, 7, 22, 16, 0, 0, DateTimeKind.Unspecified), bundle.Hourly[0].LocalTime);
+            Assert.Equal(DateTimeKind.Unspecified, bundle.Hourly[0].LocalTime.Kind);
+            Assert.All(bundle.Hourly, p => Assert.Equal(DateTimeKind.Unspecified, p.LocalTime.Kind));
+
+            // And the pure window computed from these parsed values is stable under the flipped culture.
+            var window = new HourlyWindow().Compute(bundle.Hourly, bundle.LocalNow);
+            Assert.Equal(new DateTime(2026, 7, 22, 17, 0, 0, DateTimeKind.Unspecified), window[0].LocalTime);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public async Task GetWeatherAsync_never_logs_the_geolocation_coordinates_in_cleartext()
+    {
+        // Security AC — precise-geolocation not logged: no log line (success OR fail-closed path) may
+        // contain the request's latitude/longitude. Endpoint-only logging (BaseUrl + Label) still
+        // satisfies the "endpoint + outcome" instrumentation contract. Assert with CapturingLogger:
+        // no captured message contains London's coordinate substrings.
+        var handler = new StubHttpMessageHandler(HttpStatusCode.OK, LoadFixture("current-conditions-london-200.json"));
+        var logger = new CapturingLogger<OpenMeteoGateway>();
+        var gateway = GatewayWith(handler, logger);
+
+        await gateway.GetWeatherAsync(Location.LondonGb, CancellationToken.None);
+
+        var lat = Location.LondonGb.Latitude.ToString(CultureInfo.InvariantCulture);   // "51.5074"
+        var lon = Location.LondonGb.Longitude.ToString(CultureInfo.InvariantCulture);  // "-0.1278"
+        Assert.All(logger.Messages, m => Assert.DoesNotContain(lat, m));
+        Assert.All(logger.Messages, m => Assert.DoesNotContain(lon, m));
+        // The endpoint is still logged (scheme+host+path only) — the contract is satisfied, not dropped.
+        Assert.Contains(logger.Messages, m => m.Contains("https://api.open-meteo.com/v1/forecast"));
     }
 }
