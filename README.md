@@ -79,8 +79,17 @@ Early build. Delivered so far:
   `AddWeatherPoc2Core` (so the container resolves the coordinator with both children non-null); still to
   come are the on-screen Hourly Forecast strip View and the Current Conditions page rewire onto this
   coordinator.
+- **Units** — the first pure Core slices of the Units feature (`WeatherPoc2.Core.Units`): the
+  `TemperatureUnit`/`WindSpeedUnit` enums (canonical member first — °C, km/h), a `UnitPreferences`
+  record holding the per-measure choice with a canonical `Default` and value-equality, the pure
+  `UnitConversion` (canonical → display unit, a number only — no rounding, no suffix, no I/O, and no
+  failure path, so a unit change can never hit the network per ADR-0001), and the thin `UnitFormatter`
+  that composes conversion with whole-number rounding and the unit suffix into the display string
+  (`18°C`, `12 km/h`, rendered with `InvariantCulture`). These land ahead of any wiring — nothing is
+  DI-registered or consumed yet; the weather ViewModels are rewired onto `UnitFormatter` and
+  `UnitPreferences` is persisted in later stories.
 
-The remaining domain modules (Search History, Favourites, Units, persistence, launch resolver) are
+The remaining domain modules (Search History, Favourites, persistence, launch resolver) are
 not built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the

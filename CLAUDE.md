@@ -112,6 +112,17 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   and **`INavigator`** (`GoToCurrentConditionsAsync`/`GoToSearchAsync`, implemented by the app head over
   Shell). Covered by `HourlyWindowTests`, `HourlyForecastViewModelTests`, `LocationSearchViewModelTests`,
   `LoadedLocationTests` (Tier-1, $0).
+  Core also carries the first pure slices of **Units** (`WeatherPoc2.Core.Units`, Story #77) — the
+  `TemperatureUnit`/`WindSpeedUnit` enums (canonical member first — °C, km/h), the `UnitPreferences`
+  record (per-measure choice, value-equality, a canonical `Default` used on first run or any
+  failed/absent read), the pure `UnitConversion` (canonical → display unit, number only — no rounding,
+  no suffix, no I/O, total over the closed enums so a unit re-render can never fail or hit the network
+  per ADR-0001), and the thin `UnitFormatter` (composes `UnitConversion` with whole-number
+  away-from-zero rounding + the unit suffix into the display string — `18°C` unspaced, `12 km/h`
+  spaced, digits via `InvariantCulture`). These are pure Core types landed ahead of wiring: none is
+  DI-registered in `AddWeatherPoc2Core` or consumed by a ViewModel yet (the weather ViewModels still
+  format inline; the rewire onto `UnitFormatter` and the persistence of `UnitPreferences` land in later
+  stories). Covered by `UnitConversionTests`, `UnitFormatterTests`, `UnitPreferencesTests` (Tier-1, $0).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -138,4 +149,5 @@ the Feature's CI setup. Features 1–2 (Current Temperature, Current Conditions)
 Forecast) and Feature 3 (Location Search) are built end-to-end — including the MAUI app-head **Location
 Search screen** + `MauiNavigator` `INavigator` implementation and the Current Conditions page (Layout C
 panel + Hourly strip + the always-available magnifying-glass toolbar). The remaining domain modules from
-`PRD.md` (Search History, Favourites, Units, persistence, launch resolver) are not built yet.
+`PRD.md` (Search History, Favourites, persistence, launch resolver) are not built yet; Units has its
+pure Core slices (conversion, formatting, preferences) but is not yet wired into the ViewModels or persisted.
