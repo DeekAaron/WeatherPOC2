@@ -30,7 +30,10 @@ Early build. Delivered so far:
   bundle and the Weather Condition Mapper into the full displayable panel — temperature, chance of
   rain, wind speed, condition text, and a day/night icon — and `Clear()` blanks every field so no
   stale panel lingers. It no longer fetches: the `WeatherViewModel` coordinator (below) owns the single
-  fetch and calls `Apply`/`Clear` (surfacing the one friendly error itself on failure). Core also
+  fetch and calls `Apply`/`Clear` (surfacing the one friendly error itself on failure). It now formats
+  Temperature and Wind Speed in the user's chosen Units and **re-renders instantly when the Units change**
+  — with no re-fetch and no possibility of failure (ADR-0001) — by retaining the fetched canonical bundle
+  and re-formatting it on a units change (Chance of Rain stays a percentage). Core also
   carries the **`LocationSearchViewModel`** — search, no-match and error handling, and
   select-a-candidate -> mint a `Location` -> set the shared loaded-Location holder -> navigate — over
   two small MAUI-free seams it introduces: `ILoadedLocation` (an in-memory holder of the one currently
@@ -70,33 +73,40 @@ Early build. Delivered so far:
   construction. A display-only `HourlyForecastViewModel` now turns that series into the strip: `Apply(bundle)`
   runs the window, maps each hour's day/night icon, and builds one immutable cell per hour (time, icon,
   whole-degree temperature, chance of rain), flagging the current hour and rendering "—" for any absent
-  measure; `Clear()` empties it.
+  measure; `Clear()` empties it. Each cell's temperature is formatted in the user's chosen Units, and the
+  strip **rebuilds instantly when the Units change** (no re-fetch, ADR-0001) — only the temperature moves;
+  time, icon, and chance are unchanged, and a null hour keeps its "—".
 - **`WeatherViewModel` screen coordinator** — the parent view-model that owns the single `GetWeather`
   fetch and distributes the one returned bundle to both child view-models (`CurrentConditions.Apply` /
   `HourlyForecast.Apply`), so Current Conditions and the Hourly Forecast are consistent by construction.
   On a fetch failure it clears both children and surfaces one friendly error, with `IsLoading` tracking
   the in-flight fetch. As of Story #74 the coordinator and both children are DI-registered in
-  `AddWeatherPoc2Core` (so the container resolves the coordinator with both children non-null); still to
-  come are the on-screen Hourly Forecast strip View and the Current Conditions page rewire onto this
-  coordinator.
+  `AddWeatherPoc2Core` (so the container resolves the coordinator with both children non-null); it also
+  disposes both children on teardown, detaching their units-change subscriptions from the singleton units
+  service (the children are transient, so an un-detached subscription would leak them). Still to come are
+  the on-screen Hourly Forecast strip View and the Current Conditions page rewire onto this coordinator.
 - **Units** — the first pure Core slices of the Units feature (`WeatherPoc2.Core.Units`): the
   `TemperatureUnit`/`WindSpeedUnit` enums (canonical member first — °C, km/h), a `UnitPreferences`
   record holding the per-measure choice with a canonical `Default` and value-equality, the pure
   `UnitConversion` (canonical → display unit, a number only — no rounding, no suffix, no I/O, and no
   failure path, so a unit change can never hit the network per ADR-0001), and the thin `UnitFormatter`
   that composes conversion with whole-number rounding and the unit suffix into the display string
-  (`18°C`, `12 km/h`, rendered with `InvariantCulture`). These land ahead of any wiring — nothing is
-  DI-registered or consumed yet; the weather ViewModels are rewired onto `UnitFormatter` and
-  `UnitPreferences` is persisted in later stories.
+  (`18°C`, `12 km/h`, rendered with `InvariantCulture`). These are now consumed: the two display
+  ViewModels format through `UnitFormatter` + the shared `IUnitsService` and re-render on a units change
+  (no re-fetch, ADR-0001), and `IUnitsService`/`UnitFormatter` are DI-registered in `AddWeatherPoc2Core`.
+  The user's `UnitPreferences` persist across restart through the Persistence Store (below). What remains
+  is the MAUI head supplying the app-data path provider and initialising the units service at startup, plus
+  the on-screen Settings/Units screen View — deferred to the platform-verification story.
 - **Persistence store** — the durable-state seam (`WeatherPoc2.Core.Persistence`, per ADR-0003):
   `IPersistenceStore` (`LoadAsync<T>(key)` / `SaveAsync<T>(key, value)`) backed by
   `JsonPersistenceStore`, one `System.Text.Json` document per key under an injected
   `IAppDataPathProvider` base directory (the MAUI head supplies `FileSystem.AppDataDirectory`; Core
   stays MAUI-free). Reads fail soft (absent → defaults with no log; corrupt/unreadable → defaults + a
   Warning, never crashing the view); writes are atomic and serialized per key, and a key that contains
-  a separator, `..`, or an absolute path is rejected before any file access. Like Units, the seam is
-  landed ahead of wiring — nothing is DI-registered or consumed yet, and the MAUI-head path provider
-  arrives with the wiring story.
+  a separator, `..`, or an absolute path is rejected before any file access. The seam is now
+  DI-registered in `AddWeatherPoc2Core` and consumed (the units service persists `UnitPreferences`
+  through it); the only remaining gap is the MAUI-head `IAppDataPathProvider` implementation, which
+  `AddWeatherPoc2Core` deliberately leaves host-supplied and arrives with the platform-verification story.
 
 The remaining domain modules (Search History, Favourites, launch resolver) are
 not built yet. The desktop build/launch proof is owned by a
