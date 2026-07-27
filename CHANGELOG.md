@@ -4,6 +4,30 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 
 ## [Unreleased] - 2026-07-27
 
+### Added
+- **`search-history` persistence document seam proven end-to-end** (Story #84) — a **test-only** story
+  (no production code added or changed) that pins the durable shape of the Search History document
+  through the merged Feature-5 `JsonPersistenceStore`, with **real file I/O** against a per-test temp
+  directory (e2e Principle 2 — real serializer output written to and re-read from a real file, not a
+  mock both sides agree on). **Why prove it now, ahead of the coordinator:** the store is generic over
+  `<T>`, so nothing in Feature 5 guarantees a `List<Location>` persists in the exact shape Feature 6's
+  hydration will later read — locking the contract (JSON array, most-recent-first, camelCase
+  `latitude`/`longitude`/`label`/`openMeteoId`, nullable `openMeteoId`, fail-soft recovery) as an
+  executable proof means the coordinator story can wire against a seam already known to hold, not an
+  assumed one.
+  - New `SearchHistoryPersistenceTests` (Tier-1, $0, every commit) reusing the Feature-5 temp-dir store
+    harness (`TempAppDataPathProvider` / `FixedPathProvider` / `CapturingLogger`). Asserts: ordered
+    value-equality round-trip (most-recent-first preserved); the document is a JSON array with camelCase
+    properties; a `null` `OpenMeteoId` serializes `"openMeteoId":null` and round-trips back to null; an
+    absent file loads as `null` with **no** log (normal first run); a malformed document loads as `null`
+    with a **Warning** (never thrown); a parseable over-length/duplicate document loads non-null and is
+    normalised by `SearchHistory.Seed` to at most four distinct entries, most-recent-first; and a save
+    failure (base path resolves to an existing file) is caught inside the store and **not** thrown to the
+    caller (Spec D3 / ADR-0003), so a failed persist can never block the load Feature 6 owns.
+  - No new packages (`System.Text.Json` and xUnit already in use). `SearchHistory` (the pure in-memory
+    state machine) and the `JsonPersistenceStore` are both pre-existing; this story only proves the seam
+    between them holds the contract.
+
 ### Changed
 - **Weather displays re-render on a unit change** (Story #81) — the two display-only weather
   view-models are rewired off their inline format strings onto the shared `IUnitsService` + the pure
