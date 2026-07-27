@@ -104,6 +104,22 @@ public class ServiceRegistrationTests
         Assert.NotNull(provider.GetRequiredService<WeatherPoc2.Core.Persistence.IPersistenceStore>());
         Assert.NotNull(provider.GetRequiredService<WeatherPoc2.Core.Units.IUnitsService>());
         Assert.NotNull(provider.GetRequiredService<WeatherPoc2.Core.Units.UnitFormatter>());
+        Assert.NotNull(provider.GetRequiredService<WeatherPoc2.Core.ViewModels.SettingsViewModel>());
+    }
+
+    [Fact]
+    public void The_settings_view_model_is_transient()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<WeatherPoc2.Core.Persistence.IAppDataPathProvider>(new FakePathProvider());
+        services.AddWeatherPoc2Core();
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        Assert.NotSame(
+            provider.GetRequiredService<WeatherPoc2.Core.ViewModels.SettingsViewModel>(),
+            provider.GetRequiredService<WeatherPoc2.Core.ViewModels.SettingsViewModel>());
     }
 
     [Fact]
