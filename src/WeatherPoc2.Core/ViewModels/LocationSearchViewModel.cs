@@ -7,7 +7,7 @@ using WeatherPoc2.Core.Weather;
 
 namespace WeatherPoc2.Core.ViewModels;
 
-public sealed partial class LocationSearchViewModel : ObservableObject
+public sealed partial class LocationSearchViewModel : ObservableObject, IDisposable
 {
     private const string NoMatchMessage = "No matching places found";
     private const string FriendlyError =
@@ -18,6 +18,12 @@ public sealed partial class LocationSearchViewModel : ObservableObject
     private readonly SearchHistory _history;
     private readonly INavigator _navigator;
     private readonly ILogger<LocationSearchViewModel> _logger;
+
+    // The Changed handler held in a field so it is removable in Dispose. This VM is transient while
+    // SearchHistory is a singleton, so a method-group/lambda subscription would root every dead instance
+    // forever (mirrors the CurrentConditionsViewModel IDisposable detach pattern, Story #81).
+    private readonly EventHandler _onHistoryChanged;
+    private bool _disposed;
 
     public LocationSearchViewModel(
         IWeatherGateway gateway,
@@ -36,7 +42,8 @@ public sealed partial class LocationSearchViewModel : ObservableObject
         // the startup HydrateAsync continuation is marshalled onto the UI/dispatcher thread by the App
         // head (Spec UI-thread-affinity clause). Core stays MAUI-free — no dispatcher reference here;
         // the VM just rebuilds Recent whenever Changed fires (and once now, for an already-hydrated history).
-        _history.Changed += OnHistoryChanged;
+        _onHistoryChanged = OnHistoryChanged;
+        _history.Changed += _onHistoryChanged;
         RebuildRecent();
     }
 
@@ -101,5 +108,18 @@ public sealed partial class LocationSearchViewModel : ObservableObject
         // search. Reloading an existing entry moves it to most-recent (SearchHistory.Record dedupes/moves-to-front).
         await _loader.LoadAsync(location);
         await _navigator.GoToCurrentConditionsAsync();
+    }
+
+    /// <summary>
+    /// Detaches the <see cref="SearchHistory.Changed"/> subscription so the singleton history no longer
+    /// roots this transient search-page VM once its page tears down (no leak, no rebuilding a dead
+    /// instance's Recent). Idempotent — safe to call more than once.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        _history.Changed -= _onHistoryChanged;
     }
 }

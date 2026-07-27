@@ -181,6 +181,33 @@ public class LocationSearchViewModelTests
         Assert.DoesNotContain(spy.Messages, m => m.Contains(lat) || m.Contains(lon));
     }
 
+    [Fact]
+    public void Dispose_detaches_the_history_changed_subscription_so_recent_no_longer_rebuilds()
+    {
+        var history = new SearchHistory();
+        history.Record(new Location(0, 0, "a", 1));
+        var vm = VmWith(Substitute.For<IWeatherGateway>(), Substitute.For<ILocationLoader>(), history, Substitute.For<INavigator>());
+
+        Assert.Equal(new[] { "a" }, vm.Recent.Select(l => l.Label).ToArray());
+
+        vm.Dispose();
+
+        // After Dispose the singleton history no longer roots this transient VM: a later Changed raise
+        // (a fresh load recorded) must NOT rebuild the disposed VM's Recent collection.
+        history.Record(new Location(0, 0, "b", 2));
+
+        Assert.Equal(new[] { "a" }, vm.Recent.Select(l => l.Label).ToArray());
+    }
+
+    [Fact]
+    public void Dispose_is_idempotent()
+    {
+        var vm = VmWith(Substitute.For<IWeatherGateway>(), Substitute.For<ILocationLoader>(), new SearchHistory(), Substitute.For<INavigator>());
+
+        vm.Dispose();
+        vm.Dispose(); // second call must not throw
+    }
+
     private sealed class CapturingLogger : ILogger<LocationSearchViewModel>
     {
         public List<string> Messages { get; } = new();
