@@ -156,6 +156,11 @@ paths or code are pinned here — those live in per-Feature Specs and Plans.
   top Favourite becomes the most-recent history entry, so the following launch resolves via history.
 - **Persistence Store** — the durable-state seam. Persists Search History, Favourites, and Units
   across restarts; deliberately never persists weather data (Current Conditions / Hourly Forecast).
+  Realised (per ADR-0003) as `IPersistenceStore` (`LoadAsync<T>(key)` / `SaveAsync<T>(key, value)`)
+  backed by `JsonPersistenceStore` — one `System.Text.Json` document per key under an injected
+  `IAppDataPathProvider` base directory, reads fail-soft to defaults and writes atomic + Warning-logged
+  on failure, so a persistence fault can never fail the weather view. Each concern owns its own key
+  (`units`, then `search-history`, `favourites`); no shared document to schema-merge.
 - **ViewModels (MVVM)** — one per screen area (Current Conditions, Hourly Forecast, Location Search),
   orchestrating the modules above. Per Technical-Context **MVVM-only**: all UI logic lives in
   ViewModels bound to Views; code-behind holds no business logic. ViewModels own the refresh policy —
