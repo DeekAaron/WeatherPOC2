@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPersistenceStore, JsonPersistenceStore>();
         services.AddSingleton<IUnitsService, UnitsService>();   // single owner of the units state
         services.AddSingleton<UnitFormatter>();                 // pure + stateless
+        services.AddTransient<SettingsViewModel>();             // the dedicated Settings/Units screen VM
         return services;
     }
 }
