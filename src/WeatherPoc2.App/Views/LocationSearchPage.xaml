@@ -3,10 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:WeatherPoc2.Core.ViewModels;assembly=WeatherPoc2.Core"
              xmlns:weather="clr-namespace:WeatherPoc2.Core.Weather;assembly=WeatherPoc2.Core"
+             xmlns:conv="clr-namespace:WeatherPoc2.App"
              x:Class="WeatherPoc2.App.Views.LocationSearchPage"
              x:DataType="vm:LocationSearchViewModel"
              Title="Search">
-    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="24" RowSpacing="12">
+    <ContentPage.Resources>
+        <conv:CountToBoolConverter x:Key="CountToBool" />
+    </ContentPage.Resources>
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" Padding="24" RowSpacing="12">
         <!-- Enter / the search glyph submits — search fires on explicit submit only. -->
         <SearchBar Grid.Row="0"
                    Placeholder="Search for a place…"
@@ -28,6 +32,29 @@
                             <Label.GestureRecognizers>
                                 <TapGestureRecognizer
                                     Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LocationSearchViewModel}}, Path=SelectCandidateCommand}"
+                                    CommandParameter="{Binding .}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Recent (Search History) header — hidden when history is empty (just the search box shows). -->
+        <Label Grid.Row="4"
+               Text="Recent"
+               FontAttributes="Bold"
+               IsVisible="{Binding Recent.Count, Converter={StaticResource CountToBool}}" />
+
+        <!-- Recent list — each row shows the loaded Location's Label; tapping reloads it via the coordinator. -->
+        <CollectionView Grid.Row="5" ItemsSource="{Binding Recent}" SelectionMode="None">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="weather:Location">
+                    <Grid Padding="4,10">
+                        <Label Text="{Binding Label}" FontSize="16">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LocationSearchViewModel}}, Path=SelectRecentCommand}"
                                     CommandParameter="{Binding .}" />
                             </Label.GestureRecognizers>
                         </Label>
