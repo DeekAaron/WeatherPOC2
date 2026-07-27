@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using WeatherPoc2.Core.Persistence;
+using WeatherPoc2.Core.Units;
 using WeatherPoc2.Core.ViewModels;
 using WeatherPoc2.Core.Weather;
 
@@ -35,6 +37,12 @@ public static class ServiceCollectionExtensions
         services.AddTransient<HourlyForecastViewModel>();
         services.AddTransient<WeatherViewModel>();
         services.AddTransient<LocationSearchViewModel>();
+
+        // Units + Persistence (ADR-0001 / ADR-0003). IAppDataPathProvider is NOT registered here —
+        // it is MAUI-specific and host-supplied by MauiProgram; the DI test injects a fake provider.
+        services.AddSingleton<IPersistenceStore, JsonPersistenceStore>();
+        services.AddSingleton<IUnitsService, UnitsService>();   // single owner of the units state
+        services.AddSingleton<UnitFormatter>();                 // pure + stateless
         return services;
     }
 }
