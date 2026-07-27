@@ -147,11 +147,17 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   the change kept in memory only, never thrown. `Directory.CreateDirectory` runs before writing (the
   app-data dir is not assumed to pre-exist). A `ValidateKey` **security guard** rejects an empty,
   separator-bearing, `..`-traversal, or rooted/absolute key (`ArgumentException`) before any file access,
-  so a key can never escape the injected base directory (arbitrary read/overwrite). Scoped to the `units`
-  key today, but nothing consumes it yet — not DI-registered in `AddWeatherPoc2Core`, and no MAUI-head
-  `IAppDataPathProvider` implementation exists yet; Search History and Favourites extend the same seam
-  with their own keys/documents later. Covered by `JsonPersistenceStoreTests` +
-  `JsonPersistenceStoreSecurityTests` (Tier-1, $0, real file I/O against a temp directory).
+  so a key can never escape the injected base directory (arbitrary read/overwrite). The `units` key is the
+  first consumer (via `UnitsService`); the **`search-history` document seam is now proven end-to-end**
+  (Story #84, test-only — no production code): a `List<Location>` round-trips through the store
+  most-recent-first as a camelCase JSON array (`latitude`/`longitude`/`label`/`openMeteoId`) with a
+  nullable `openMeteoId` round-tripping as `null`, an absent file loads as `null` with no log, a malformed
+  document loads as `null` + a Warning, a parseable over-length/duplicate document is normalised by
+  `SearchHistory.Seed`, and a save failure is caught + Warning-logged and never thrown to the caller — all
+  against a real temp directory through the Feature-5 store. Favourites extend the same seam with its own
+  key/document later, and the Search History coordinator/hydration + DI/MAUI wiring remain. Covered by
+  `JsonPersistenceStoreTests` + `JsonPersistenceStoreSecurityTests` and `SearchHistoryPersistenceTests`
+  (Tier-1, $0, real file I/O against a temp directory).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
