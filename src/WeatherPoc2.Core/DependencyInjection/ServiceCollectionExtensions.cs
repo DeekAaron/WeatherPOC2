@@ -11,7 +11,8 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Registers the OS-agnostic Weather graph: the named HttpClient for the Gateway, the Gateway
     /// itself, the pure stateless singletons (WeatherConditionMapper, HourlyWindow), the shared
-    /// in-memory ILoadedLocation holder, and the ViewModels — the WeatherViewModel coordinator plus
+    /// in-memory ILoadedLocation holder, the shared SearchHistory state machine and its ILocationLoader
+    /// coordinator (the single load choke point), and the ViewModels — the WeatherViewModel coordinator plus
     /// its two display-only children (CurrentConditions, HourlyForecast) and the LocationSearchViewModel
     /// as transients. INavigator is NOT registered here (it is a MAUI type — the app head supplies it).
     /// The MAUI head calls this, then adds INavigator and the platform Pages. Callers must have added
@@ -33,6 +34,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<WeatherConditionMapper>();            // pure + stateless
         services.AddSingleton<HourlyWindow>();                      // pure + stateless
         services.AddSingleton<ILoadedLocation, LoadedLocation>();   // shared across the app (search flow ↔ Current Conditions)
+        services.AddSingleton<SearchHistory>();                     // pure state machine, one shared instance
+        services.AddSingleton<ILocationLoader, LocationLoader>();   // the single load choke point (owns history persistence)
         services.AddTransient<CurrentConditionsViewModel>();
         services.AddTransient<HourlyForecastViewModel>();
         services.AddTransient<WeatherViewModel>();

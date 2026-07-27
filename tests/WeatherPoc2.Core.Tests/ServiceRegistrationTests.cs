@@ -57,6 +57,25 @@ public class ServiceRegistrationTests
     }
 
     [Fact]
+    public void SearchHistory_is_registered_as_a_singleton()
+    {
+        using var provider = BuildProvider();
+        var a = provider.GetRequiredService<SearchHistory>();
+        var b = provider.GetRequiredService<SearchHistory>();
+        Assert.Same(a, b);
+    }
+
+    [Fact]
+    public void LocationLoader_resolves_as_ILocationLoader_singleton()
+    {
+        using var provider = BuildProvider();
+        var a = provider.GetRequiredService<ILocationLoader>();
+        var b = provider.GetRequiredService<ILocationLoader>();
+        Assert.Same(a, b);
+        Assert.IsType<LocationLoader>(a);
+    }
+
+    [Fact]
     public void AddWeatherPoc2Core_registers_the_weather_condition_mapper()
     {
         // Preserved from Feature 2: the mapper stays registered and injected into CurrentConditionsViewModel.
