@@ -139,6 +139,34 @@ public class HourlyForecastViewModelTests
     }
 
     [Fact]
+    public async Task Disposing_the_strip_detaches_it_so_a_units_change_no_longer_rebuilds()
+    {
+        // The strip subscribes to IUnitsService.Changed in its ctor; the service is a singleton that
+        // outlives this transient VM. Dispose() must detach that subscription so the disposed strip no
+        // longer rebuilds (no leak, no warning logs on a dead instance). Idempotent: safe to call twice.
+        using var paths = new TempAppDataPathProvider();
+        var units = new UnitsService(new JsonPersistenceStore(paths, NullLogger<JsonPersistenceStore>.Instance),
+                                     NullLogger<UnitsService>.Instance);
+        var vm = Vm(units);
+        var hourly = new List<HourlyForecastPoint>
+        {
+            new(Local(16), 0.0, 0, true, 5),    // 0 °C
+            new(Local(17), 10.0, 2, true, 20),  // 10 °C
+        };
+        vm.Apply(BundleWith(hourly, Local(16, 20)));
+        Assert.Equal("0°C", vm.Entries[0].TemperatureDisplay);
+        Assert.Equal("10°C", vm.Entries[1].TemperatureDisplay);
+
+        vm.Dispose();
+        vm.Dispose(); // idempotent — a second detach must not throw
+
+        await units.SetTemperatureUnitAsync(TemperatureUnit.Fahrenheit);
+
+        Assert.Equal("0°C", vm.Entries[0].TemperatureDisplay);  // detached — no rebuild on the disposed strip
+        Assert.Equal("10°C", vm.Entries[1].TemperatureDisplay);
+    }
+
+    [Fact]
     public void A_units_change_after_Clear_does_not_repopulate_the_strip()
     {
         using var paths = new TempAppDataPathProvider();

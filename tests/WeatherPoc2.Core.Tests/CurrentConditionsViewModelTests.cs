@@ -136,6 +136,30 @@ public class CurrentConditionsViewModelTests
     }
 
     [Fact]
+    public async Task Disposing_the_panel_detaches_it_so_a_units_change_no_longer_re_formats()
+    {
+        // The panel subscribes to IUnitsService.Changed in its ctor; the service is a singleton that
+        // outlives this transient VM. Dispose() must detach that subscription so the disposed panel no
+        // longer re-formats (no leak, no work on a dead instance). Idempotent: safe to call twice.
+        using var paths = new TempAppDataPathProvider();
+        var units = new UnitsService(new JsonPersistenceStore(paths, NullLogger<JsonPersistenceStore>.Instance),
+                                     NullLogger<UnitsService>.Instance);
+        var vm = Vm(units);
+        vm.Apply(Bundle(0.0, 36.0, 20, 0, true)); // °C / km/h — the retained canonical bundle
+        Assert.Equal("0°C", vm.TemperatureDisplay);
+        Assert.Equal("36 km/h", vm.WindSpeedDisplay);
+
+        vm.Dispose();
+        vm.Dispose(); // idempotent — a second detach must not throw
+
+        await units.SetTemperatureUnitAsync(TemperatureUnit.Fahrenheit);
+        await units.SetWindSpeedUnitAsync(WindSpeedUnit.MilesPerHour);
+
+        Assert.Equal("0°C", vm.TemperatureDisplay);      // detached — no re-format on the disposed panel
+        Assert.Equal("36 km/h", vm.WindSpeedDisplay);
+    }
+
+    [Fact]
     public void A_units_change_after_Clear_does_not_repopulate_the_panel()
     {
         // Clear drops the retained bundle, so a later Changed raise has nothing to re-format —

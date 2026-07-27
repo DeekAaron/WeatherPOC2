@@ -19,7 +19,7 @@ namespace WeatherPoc2.Core.ViewModels;
 /// <b>rebuilds</b> the collection on <see cref="IUnitsService.Changed"/> (items are immutable records) —
 /// no re-fetch, cannot fail (ADR-0001). Time, icon, and Chance are unchanged across a units switch.
 /// </summary>
-public sealed class HourlyForecastViewModel
+public sealed class HourlyForecastViewModel : IDisposable
 {
     private const string Placeholder = "—";
 
@@ -34,6 +34,11 @@ public sealed class HourlyForecastViewModel
     private IReadOnlyList<HourlyForecastPoint> _points = Array.Empty<HourlyForecastPoint>();
     private DateTime _currentHour;
 
+    // The Changed handler held in a field so it is removable in Dispose. This VM is transient while
+    // IUnitsService is a singleton, so a throwaway lambda would root every dead instance forever.
+    private readonly EventHandler _onUnitsChanged;
+    private bool _disposed;
+
     public HourlyForecastViewModel(
         WeatherConditionMapper mapper,
         HourlyWindow window,
@@ -46,7 +51,8 @@ public sealed class HourlyForecastViewModel
         _units = units;
         _formatter = formatter;
         _logger = logger;
-        _units.Changed += (_, _) => Rebuild(); // re-format held data; no re-fetch (ADR-0001)
+        _onUnitsChanged = (_, _) => Rebuild(); // re-format held data; no re-fetch (ADR-0001)
+        _units.Changed += _onUnitsChanged;
     }
 
     /// <summary>The ordered hourly strip cells for the current window. Rebuilt each <see cref="Apply"/>.</summary>
@@ -114,5 +120,18 @@ public sealed class HourlyForecastViewModel
     {
         _logger.LogWarning("Hourly Forecast {Time}: {Measure} absent → showing placeholder", time, measure);
         return Placeholder;
+    }
+
+    /// <summary>
+    /// Detaches the <see cref="IUnitsService.Changed"/> subscription so the singleton service no longer
+    /// roots this transient strip once its page tears down (no leak, no rebuild/warning logs on a dead
+    /// instance). Idempotent — safe to call more than once.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        _units.Changed -= _onUnitsChanged;
     }
 }

@@ -19,7 +19,7 @@ namespace WeatherPoc2.Core.ViewModels;
 /// magnifying-glass action routes back to search via <see cref="INavigator"/> (Reqs 19 / 21),
 /// keeping the coordinator MAUI-free (Overriding Principle #2).
 /// </summary>
-public sealed partial class WeatherViewModel : ObservableObject
+public sealed partial class WeatherViewModel : ObservableObject, IDisposable
 {
     private const string FriendlyError =
         "Couldn't reach the weather service — check your connection and try again.";
@@ -85,4 +85,16 @@ public sealed partial class WeatherViewModel : ObservableObject
     /// <summary>Always-available magnifying-glass action → back to Location Search (Reqs 19 / 21).</summary>
     [RelayCommand]
     private Task OpenSearchAsync() => _navigator.GoToSearchAsync();
+
+    /// <summary>
+    /// Tears down the whole display graph together: the coordinator owns both transient children, so it
+    /// propagates Dispose to each — detaching their <see cref="IUnitsService.Changed"/> subscriptions so
+    /// the singleton units service no longer roots either child once the page disposes the coordinator.
+    /// The coordinator itself holds no Changed subscription. Idempotent via each child's own guard.
+    /// </summary>
+    public void Dispose()
+    {
+        CurrentConditions.Dispose();
+        HourlyForecast.Dispose();
+    }
 }

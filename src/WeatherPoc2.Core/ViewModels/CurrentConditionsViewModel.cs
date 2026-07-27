@@ -16,7 +16,7 @@ namespace WeatherPoc2.Core.ViewModels;
 /// on <see cref="IUnitsService.Changed"/> — no re-fetch, no network, cannot fail (ADR-0001). Chance of
 /// Rain, condition text, and the icon are not units-affected (Chance of Rain stays a percentage).
 /// </summary>
-public sealed partial class CurrentConditionsViewModel : ObservableObject
+public sealed partial class CurrentConditionsViewModel : ObservableObject, IDisposable
 {
     private readonly WeatherConditionMapper _mapper;
     private readonly IUnitsService _units;
@@ -26,6 +26,11 @@ public sealed partial class CurrentConditionsViewModel : ObservableObject
     // The retained canonical bundle, re-formatted on a units change. Null before the first Apply and
     // after Clear (so a later Changed raise has nothing to re-format — no stale panel reappears).
     private WeatherBundle? _current;
+
+    // The Changed handler held in a field so it is removable in Dispose. This VM is transient while
+    // IUnitsService is a singleton, so a throwaway lambda would root every dead instance forever.
+    private readonly EventHandler _onUnitsChanged;
+    private bool _disposed;
 
     public CurrentConditionsViewModel(
         WeatherConditionMapper mapper,
@@ -37,7 +42,8 @@ public sealed partial class CurrentConditionsViewModel : ObservableObject
         _units = units;
         _formatter = formatter;
         _logger = logger;
-        _units.Changed += (_, _) => FormatMeasures(); // re-render held data; no re-fetch (ADR-0001)
+        _onUnitsChanged = (_, _) => FormatMeasures(); // re-render held data; no re-fetch (ADR-0001)
+        _units.Changed += _onUnitsChanged;
     }
 
     [ObservableProperty] private string _temperatureDisplay = string.Empty;
@@ -95,5 +101,18 @@ public sealed partial class CurrentConditionsViewModel : ObservableObject
             return;
         TemperatureDisplay = _formatter.FormatTemperature(_current.CurrentTemperatureCelsius, _units.Current.Temperature);
         WindSpeedDisplay = _formatter.FormatWindSpeed(_current.CurrentWindSpeedKmh, _units.Current.WindSpeed);
+    }
+
+    /// <summary>
+    /// Detaches the <see cref="IUnitsService.Changed"/> subscription so the singleton service no longer
+    /// roots this transient panel once its page tears down (no leak, no re-formatting a dead instance).
+    /// Idempotent — safe to call more than once.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        _units.Changed -= _onUnitsChanged;
     }
 }
