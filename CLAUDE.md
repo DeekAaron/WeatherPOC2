@@ -152,6 +152,18 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   `IAppDataPathProvider` implementation exists yet; Search History and Favourites extend the same seam
   with their own keys/documents later. Covered by `JsonPersistenceStoreTests` +
   `JsonPersistenceStoreSecurityTests` (Tier-1, $0, real file I/O against a temp directory).
+  Core also carries the pure **Search History** state machine (`SearchHistory`, Story #83) — an
+  in-memory, I/O-free, MAUI-free recency list of up to four (`Capacity = 4`) most-recently loaded
+  `Location`s, most-recent-first and always distinct by identity, landed ahead of wiring (the persistence
+  and hydration are the later coordinator's concern). `Record(location)` dedupes-by-identity ->
+  moves-to-front -> caps at four (evicting the tail); `Seed(entries)` **normalises rather than trusts** a
+  persisted list (dedupe keeping the front-most occurrence, then cap) so a parseable-but-invalid stored
+  list can never violate the in-memory invariant; `Entries` is the read-only recency view and `Changed`
+  fires whenever `Entries` changes — suppressed on a front-identical re-record no-op. The single private
+  `SameLocation` identity predicate is the sole definition of Location identity (Spec D2): Open-Meteo id
+  when both non-null, else exact coordinates — `Label` is never part of identity. Not DI-registered in
+  `AddWeatherPoc2Core` and nothing consumes it yet; the XML doc's `ILocationLoader` feed is a forward
+  reference to the not-yet-built coordinator. Covered by `SearchHistoryTests` (Tier-1, $0).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -177,8 +189,10 @@ schedule wiring lives in the repo yet — the trait makes the split possible; th
 the Feature's CI setup. Features 1–2 (Current Temperature, Current Conditions), Feature 4 (Hourly
 Forecast) and Feature 3 (Location Search) are built end-to-end — including the MAUI app-head **Location
 Search screen** + `MauiNavigator` `INavigator` implementation and the Current Conditions page (Layout C
-panel + Hourly strip + the always-available magnifying-glass toolbar). The remaining domain modules from
-`PRD.md` (Search History, Favourites, launch resolver) are not built yet. **Units** is now wired into the
+panel + Hourly strip + the always-available magnifying-glass toolbar). The pure **Search History** state
+machine (`SearchHistory`, Story #83) is built in Core as an unwired recency state machine; the remaining
+domain modules from `PRD.md` (Favourites, launch resolver) — and the coordinator that will feed/persist
+Search History — are not built yet. **Units** is now wired into the
 display layer in Core: the two display ViewModels format Temperature/Wind Speed through `UnitFormatter` +
 `IUnitsService` and re-render on a units change (Story #81, ADR-0001 — no re-fetch, cannot fail), and
 `IUnitsService`/`UnitFormatter` are DI-registered in `AddWeatherPoc2Core`; the user's `UnitPreferences`

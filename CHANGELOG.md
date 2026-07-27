@@ -37,6 +37,28 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
     MAUI head supplies the real one. No new packages.
 
 ### Added
+- **Search History state machine (`SearchHistory`)** (Story #83) — the pure, in-memory recency state
+  machine the PRD's module decomposition names, landed as unwired Core logic ahead of any coordinator
+  (the same land-pure-first pattern as Units #77 and the Persistence Store #78). It is the recency-ordered
+  list of up to four (`Capacity = 4`) most-recently *loaded* `Location`s, most-recent-first and always
+  distinct by identity — the thing PRD requirements 27–30 describe.
+  - **`Record(location)`** dedupes-by-identity, moves the match to the front, and caps at four by
+    evicting the tail — so loading a place already in the list reorders rather than duplicates, and a
+    genuinely new load at capacity drops the oldest. A re-record of the current front (same identity
+    *and* same instance) is a deliberate no-op that does **not** raise `Changed`, so a bound view never
+    rebuilds for an invisible change.
+  - **`Seed(entries)`** hydrates from persistence but **normalises rather than trusts**: it dedupes by
+    identity keeping the front-most occurrence, then caps to the first four. **Why not trust the stored
+    list:** the Persistence Store (#78) reads fail-soft and a file can be hand-edited or corrupt, so a
+    parseable-but-invalid list (duplicates, over-length) must never be allowed to violate the in-memory
+    invariant — the state machine is the single guardian of "four distinct, most-recent-first."
+  - **Identity is one private `SameLocation` predicate** (Spec D2): Open-Meteo id when both are present,
+    else exact coordinates — `Label` is deliberately never part of identity, so the same place typed two
+    different ways (or re-labelled by a later geocode) collapses to one entry and the freshly-loaded
+    label wins its slot.
+  - **Pure and I/O-free, no MAUI dependency**, and not yet DI-registered or consumed — persistence,
+    hydration, and the load-event feed (`ILocationLoader`, referenced in the XML doc) are the later
+    coordinator story's concern. Covered by `SearchHistoryTests` (Tier-1, $0).
 - **Persistence store seam (`WeatherPoc2.Core.Persistence`)** (Story #78) — the durable-state seam
   ADR-0003 governs, landed as pure Core logic ahead of any wiring (the same land-pure-first pattern as
   Units, Story #77). It is the single mechanism Units, Search History, and Favourites will all persist

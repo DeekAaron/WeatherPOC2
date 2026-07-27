@@ -107,9 +107,15 @@ Early build. Delivered so far:
   DI-registered in `AddWeatherPoc2Core` and consumed (the units service persists `UnitPreferences`
   through it); the only remaining gap is the MAUI-head `IAppDataPathProvider` implementation, which
   `AddWeatherPoc2Core` deliberately leaves host-supplied and arrives with the platform-verification story.
+- **Search History** — a pure, in-memory Core state machine (`SearchHistory`): the recency-ordered list
+  of up to four most-recently loaded Locations, most-recent-first and distinct by Location identity
+  (Open-Meteo id, else coordinates — never label). `Record` moves a re-loaded place to the front rather
+  than duplicating it and evicts the oldest at capacity; `Seed` normalises (never trusts) a persisted
+  list back to at most four distinct entries. It does no I/O and is not yet wired into the app —
+  persistence and the load-event feed are the follow-on coordinator's job.
 
-The remaining domain modules (Search History, Favourites, launch resolver) are
-not built yet. The desktop build/launch proof is owned by a
+The remaining domain modules (Favourites, launch resolver, and the coordinator that feeds and persists
+Search History) are not built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
 scheduled path, never per-commit.
