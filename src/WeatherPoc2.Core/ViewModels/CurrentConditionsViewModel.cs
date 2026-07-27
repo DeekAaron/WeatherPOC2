@@ -1,6 +1,6 @@
-using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
+using WeatherPoc2.Core.Units;
 using WeatherPoc2.Core.Weather;
 
 namespace WeatherPoc2.Core.ViewModels;
@@ -10,18 +10,34 @@ namespace WeatherPoc2.Core.ViewModels;
 /// <c>WeatherViewModel</c> coordinator owns the single GetWeather call and pushes the bundle in via
 /// <see cref="Apply"/> (or blanks the panel via <see cref="Clear"/> on failure). Derives the
 /// condition word + day/night icon through the pure mapper (ADR-0001 derive-for-display).
+///
+/// Units (Feature 5): Temperature and Wind Speed are formatted through <see cref="UnitFormatter"/> +
+/// <see cref="IUnitsService.Current"/>. The VM retains the applied canonical bundle and re-formats it
+/// on <see cref="IUnitsService.Changed"/> — no re-fetch, no network, cannot fail (ADR-0001). Chance of
+/// Rain, condition text, and the icon are not units-affected (Chance of Rain stays a percentage).
 /// </summary>
 public sealed partial class CurrentConditionsViewModel : ObservableObject
 {
     private readonly WeatherConditionMapper _mapper;
+    private readonly IUnitsService _units;
+    private readonly UnitFormatter _formatter;
     private readonly ILogger<CurrentConditionsViewModel> _logger;
+
+    // The retained canonical bundle, re-formatted on a units change. Null before the first Apply and
+    // after Clear (so a later Changed raise has nothing to re-format — no stale panel reappears).
+    private WeatherBundle? _current;
 
     public CurrentConditionsViewModel(
         WeatherConditionMapper mapper,
+        IUnitsService units,
+        UnitFormatter formatter,
         ILogger<CurrentConditionsViewModel> logger)
     {
         _mapper = mapper;
+        _units = units;
+        _formatter = formatter;
         _logger = logger;
+        _units.Changed += (_, _) => FormatMeasures(); // re-render held data; no re-fetch (ADR-0001)
     }
 
     [ObservableProperty] private string _temperatureDisplay = string.Empty;
@@ -31,15 +47,16 @@ public sealed partial class CurrentConditionsViewModel : ObservableObject
     [ObservableProperty] private string? _iconSource;
 
     /// <summary>
-    /// Populates the five display properties from the shared bundle the coordinator fetched. Derives
-    /// the condition word + day/night icon via the pure mapper; each lenient fall-back (unrecognized/
-    /// absent weather_code, absent is_day) is logged as a Warning — never silent (Principle #1).
+    /// Populates the five display properties from the shared bundle the coordinator fetched. Retains the
+    /// canonical bundle and formats Temperature/Wind Speed through the current units. Derives the
+    /// condition word + day/night icon via the pure mapper; each lenient fall-back (unrecognized/absent
+    /// weather_code, absent is_day) is logged as a Warning — never silent (Principle #1).
     /// </summary>
     public void Apply(WeatherBundle bundle)
     {
-        TemperatureDisplay = bundle.CurrentTemperatureCelsius.ToString("0.0", CultureInfo.InvariantCulture) + " °C";
-        ChanceOfRainDisplay = $"{bundle.CurrentChanceOfRainPercent}%";
-        WindSpeedDisplay = bundle.CurrentWindSpeedKmh.ToString("0.#", CultureInfo.InvariantCulture) + " km/h";
+        _current = bundle;
+        FormatMeasures();
+        ChanceOfRainDisplay = $"{bundle.CurrentChanceOfRainPercent}%"; // not units-affected (PRD-45)
 
         var condition = _mapper.Map(bundle.CurrentWeatherCode, bundle.IsDay);
         ConditionText = condition.DisplayName;
@@ -55,14 +72,28 @@ public sealed partial class CurrentConditionsViewModel : ObservableObject
 
     /// <summary>
     /// Blanks every display so no stale/partial panel reads as current. The coordinator calls this on
-    /// <c>WeatherUnavailableException</c>, alongside surfacing the single friendly error itself.
+    /// <c>WeatherUnavailableException</c>, alongside surfacing the single friendly error itself. Drops
+    /// the retained bundle so a later units change does not repopulate a cleared panel.
     /// </summary>
     public void Clear()
     {
+        _current = null;
         TemperatureDisplay = string.Empty;
         ChanceOfRainDisplay = null;
         WindSpeedDisplay = null;
         ConditionText = null;
         IconSource = null;
+    }
+
+    /// <summary>
+    /// Formats the retained bundle's Temperature and Wind Speed through the current units. Called from
+    /// <see cref="Apply"/> and on every <see cref="IUnitsService.Changed"/> — a no-op with no bundle held.
+    /// </summary>
+    private void FormatMeasures()
+    {
+        if (_current is null)
+            return;
+        TemperatureDisplay = _formatter.FormatTemperature(_current.CurrentTemperatureCelsius, _units.Current.Temperature);
+        WindSpeedDisplay = _formatter.FormatWindSpeed(_current.CurrentWindSpeedKmh, _units.Current.WindSpeed);
     }
 }

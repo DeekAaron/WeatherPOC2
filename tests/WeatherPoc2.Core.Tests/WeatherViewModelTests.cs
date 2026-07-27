@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using WeatherPoc2.Core.Navigation;
+using WeatherPoc2.Core.Units;
 using WeatherPoc2.Core.ViewModels;
 using WeatherPoc2.Core.Weather;
 using Xunit;
@@ -26,8 +27,13 @@ public class WeatherViewModelTests
         // Feature 3: the coordinator fetches for the loaded Location — default a resolved one so the
         // fetch-path tests still exercise a real fetch (they no longer depend on a hard-coded London).
         loaded ??= LoadedWith(Location.LondonGb);
-        var current = new CurrentConditionsViewModel(new WeatherConditionMapper(), NullLogger<CurrentConditionsViewModel>.Instance);
-        var hourly = new HourlyForecastViewModel(new WeatherConditionMapper(), new HourlyWindow(), NullLogger<HourlyForecastViewModel>.Instance);
+        // The two display children now take the shared IUnitsService + the pure UnitFormatter (Feature 5).
+        // A substitute fixed at the canonical defaults keeps these coordinator tests on °C / km/h.
+        var units = Substitute.For<IUnitsService>();
+        units.Current.Returns(UnitPreferences.Default);
+        var formatter = new UnitFormatter();
+        var current = new CurrentConditionsViewModel(new WeatherConditionMapper(), units, formatter, NullLogger<CurrentConditionsViewModel>.Instance);
+        var hourly = new HourlyForecastViewModel(new WeatherConditionMapper(), new HourlyWindow(), units, formatter, NullLogger<HourlyForecastViewModel>.Instance);
         return new WeatherViewModel(
             gateway, loaded, navigator ?? Substitute.For<INavigator>(), current, hourly,
             NullLogger<WeatherViewModel>.Instance);
@@ -48,7 +54,7 @@ public class WeatherViewModelTests
         await vm.LoadCommand.ExecuteAsync(null);
 
         await gateway.Received(1).GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>());
-        Assert.Equal("26.5 °C", vm.CurrentConditions.TemperatureDisplay);
+        Assert.Equal("27°C", vm.CurrentConditions.TemperatureDisplay);
         Assert.Equal(2, vm.HourlyForecast.Entries.Count);
         Assert.Null(vm.ErrorMessage);
         Assert.False(vm.IsLoading);

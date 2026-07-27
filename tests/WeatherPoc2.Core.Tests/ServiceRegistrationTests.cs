@@ -16,6 +16,10 @@ public class ServiceRegistrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton(Substitute.For<INavigator>()); // supplied by the MAUI head in production
+        // The display ViewModels now transitively depend on IAppDataPathProvider (via IUnitsService ->
+        // UnitsService -> IPersistenceStore -> JsonPersistenceStore), which AddWeatherPoc2Core deliberately
+        // does NOT register (host-supplied). Supply the fake here, exactly as MauiProgram supplies the MAUI one.
+        services.AddSingleton<WeatherPoc2.Core.Persistence.IAppDataPathProvider>(new FakePathProvider());
         services.AddWeatherPoc2Core();
         return services.BuildServiceProvider(validateScopes: true);
     }
