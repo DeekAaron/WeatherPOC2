@@ -52,11 +52,16 @@ Built so far:
 - `WeatherPoc2.Core` — the Open-Meteo seam (`OpenMeteoGateway`, `IWeatherGateway`,
   `WeatherUnavailableException`, `LocationSearchUnavailableException`, `Location`, `WeatherBundle`,
   `SearchCandidate`), the **display-only** `CurrentConditionsViewModel` (CommunityToolkit.Mvvm —
-  `Apply(bundle)`/`Clear()`, no fetch of its own, per Story #71), the parent **`WeatherViewModel`**
+  `Apply(bundle)`/`Clear()`, no fetch of its own, per Story #71; as of Story #81 it retains the applied
+  canonical bundle and formats Temperature/Wind Speed through `UnitFormatter` + `IUnitsService.Current`,
+  re-formatting on `IUnitsService.Changed` — no re-fetch, cannot fail per ADR-0001 — and is `IDisposable`
+  to detach that subscription; Chance of Rain stays a percentage), the parent **`WeatherViewModel`**
   coordinator (Story #73, now integrated with Feature 3) that owns the single `GetWeather` call — for
   the **loaded Location** read from `ILoadedLocation.Current` rather than a hard-coded constant,
   no-opping when nothing is loaded (launch shows search first) — distributes the one bundle to both
-  display children, and exposes an `OpenSearchCommand` routing to search via `INavigator`; the
+  display children, and exposes an `OpenSearchCommand` routing to search via `INavigator` (and, as of
+  Story #81, is `IDisposable`, propagating `Dispose` to both transient children so they detach from the
+  singleton `IUnitsService.Changed` on page teardown; the coordinator holds no subscription itself); the
   **`LocationSearchViewModel`** (search / no-match / error, and select-a-candidate -> set the shared
   holder -> navigate); and the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named
   `HttpClient` with a 15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, the pure stateless
@@ -104,7 +109,11 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   (`WeatherBundle.Hourly` + `LocalNow`), and the display-only **`HourlyForecastViewModel`** consumes it
   (`Apply(bundle)` runs the window, maps each hour's icon, rebuilds an
   `ObservableCollection<HourlyForecastItem>` strip; null measures render "—" + a Warning; `Clear()`
-  empties it). Core also carries the **Location Search** orchestration: **`LocationSearchViewModel`**
+  empties it). As of Story #81 it retains the windowed canonical points and formats each entry's
+  Temperature through `UnitFormatter` + `IUnitsService.Current`, **rebuilding** the strip on
+  `IUnitsService.Changed` (cells are immutable records) — only Temperature is units-affected (Time, icon,
+  Chance unchanged); a null hour temperature keeps the "—" placeholder — and is `IDisposable` to detach
+  the subscription. Core also carries the **Location Search** orchestration: **`LocationSearchViewModel`**
   (`Query`, `Candidates`, `StatusMessage`/`ErrorMessage`, a `SearchCommand` that no-ops on blank input
   and shows "No matching places found" on an empty result, and a `SelectCandidateCommand` that mints a
   `Location`, sets the shared holder, then navigates), plus the two MAUI-free seams it introduces —
@@ -169,7 +178,13 @@ the Feature's CI setup. Features 1–2 (Current Temperature, Current Conditions)
 Forecast) and Feature 3 (Location Search) are built end-to-end — including the MAUI app-head **Location
 Search screen** + `MauiNavigator` `INavigator` implementation and the Current Conditions page (Layout C
 panel + Hourly strip + the always-available magnifying-glass toolbar). The remaining domain modules from
-`PRD.md` (Search History, Favourites, launch resolver) are not built yet; the **Persistence Store** has
-its Core seam built (`IPersistenceStore` / `JsonPersistenceStore` / `IAppDataPathProvider`, per ADR-0003)
-but is not yet DI-registered, consumed, or backed by a MAUI-head path provider; Units has its pure Core
-slices (conversion, formatting, preferences) but is not yet wired into the ViewModels or persisted.
+`PRD.md` (Search History, Favourites, launch resolver) are not built yet. **Units** is now wired into the
+display layer in Core: the two display ViewModels format Temperature/Wind Speed through `UnitFormatter` +
+`IUnitsService` and re-render on a units change (Story #81, ADR-0001 — no re-fetch, cannot fail), and
+`IUnitsService`/`UnitFormatter` are DI-registered in `AddWeatherPoc2Core`; the user's `UnitPreferences`
+persist through the **Persistence Store** (`IPersistenceStore` / `JsonPersistenceStore`, per ADR-0003),
+which is also now DI-registered and consumed transitively via `UnitsService`. What remains for both is
+the MAUI head: `AddWeatherPoc2Core` deliberately does not register `IAppDataPathProvider` (host-supplied)
+and `MauiProgram` does not yet supply one, so the desktop graph cannot resolve `IUnitsService` at runtime
+— that path-provider wiring (and calling `IUnitsService.InitializeAsync` at startup) is deferred to the
+HITL platform-verification story, along with the Settings/Units screen View.

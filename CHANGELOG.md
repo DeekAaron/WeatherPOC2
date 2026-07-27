@@ -4,6 +4,38 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 
 ## [Unreleased] - 2026-07-27
 
+### Changed
+- **Weather displays re-render on a unit change** (Story #81) — the two display-only weather
+  view-models are rewired off their inline format strings onto the shared `IUnitsService` + the pure
+  `UnitFormatter`, so Temperature and Wind Speed now render in the user's chosen units and **re-render
+  the instant those units change** — with no re-fetch and no network call, honouring ADR-0001 ("a unit
+  change never triggers a network request and cannot fail; it re-renders already-held data"). This is
+  the "later story" the Units (#77) and coordinator (#71–#73) entries deferred the ViewModel rewire to.
+  - **`CurrentConditionsViewModel`** retains the applied canonical `WeatherBundle` (`_current`) and
+    formats Temperature/Wind Speed through `UnitFormatter` + `IUnitsService.Current`, re-formatting on
+    every `IUnitsService.Changed`. Chance of Rain, condition text, and the icon are **not** units-affected
+    (Chance of Rain stays a percentage, PRD req 45). `Clear()` drops the retained bundle so a later units
+    change cannot repopulate a cleared panel (the coordinator's failure path).
+  - **`HourlyForecastViewModel`** retains the windowed canonical points and **rebuilds** its
+    `ObservableCollection` on `IUnitsService.Changed` (the cells are immutable records) — only each entry's
+    Temperature is units-affected; Time, icon, and Chance are unchanged across a switch. A null hour
+    temperature keeps the "—" placeholder. `Clear()` drops the retained points so a later change rebuilds
+    nothing.
+  - **Lifetime/leak fix** — both children implement `IDisposable` and detach their `IUnitsService.Changed`
+    subscription on `Dispose`, because the view-models are **transient** while `IUnitsService` is a
+    **singleton**: an un-detached subscription would root every torn-down panel forever (and re-format a
+    dead instance). The handler is held in a field (not a throwaway lambda) so it is removable, and
+    `Dispose` is idempotent. The `WeatherViewModel` coordinator owns both transient children, so its own
+    new `Dispose` propagates teardown to both; the coordinator itself holds no `Changed` subscription.
+  - Covered by new/updated `CurrentConditionsViewModelTests`, `HourlyForecastViewModelTests`, and
+    `WeatherViewModelTests` (Tier-1, $0): re-format-from-the-retained-bundle on a real `UnitsService`
+    change (0°C→32°F, 36 km/h→22 mph) with no second `Apply`; Chance-of-Rain unaffected; the null-hour
+    placeholder preserved; dispose detaches so a later change re-formats neither; a change after `Clear`
+    repopulates nothing; and the coordinator's `Dispose` tearing down both children. `ServiceRegistrationTests`
+    now supplies a fake `IAppDataPathProvider` because the display view-models transitively depend on it
+    (via `IUnitsService` → `UnitsService` → `IPersistenceStore` → `JsonPersistenceStore`), exactly as the
+    MAUI head supplies the real one. No new packages.
+
 ### Added
 - **Persistence store seam (`WeatherPoc2.Core.Persistence`)** (Story #78) — the durable-state seam
   ADR-0003 governs, landed as pure Core logic ahead of any wiring (the same land-pure-first pattern as
