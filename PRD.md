@@ -132,6 +132,12 @@ paths or code are pinned here — those live in per-Feature Specs and Plans.
   user's chosen display units (temperature formula; wind-speed factors for mph, m/s, knots).
   Per **ADR-0001**, weather is always fetched and held in canonical units and converted in-app for
   display; a unit change re-renders held data and never triggers or can fail a network call.
+  Implemented as three separated pieces: `UnitConversion` is a **number-only** pure function (no
+  rounding, no suffix, no I/O, total over the closed unit enums — this is the "cannot fail" guarantee),
+  `UnitFormatter` is the single thin presentation layer that composes conversion with whole-number
+  rounding and the unit suffix into the display string, and `UnitPreferences` is the per-measure choice
+  as one value-equality record with a canonical `Default` — the value the Persistence Store durably
+  holds and the fallback on a first run or a failed/absent read.
 - **Weather Condition Mapper** — pure mapping from Open-Meteo's numeric WMO weather code to the
   app's curated small set of Weather Conditions, and selection of the day or night Weather Icon
   variant from the `is_day` flag. The condition word is unchanged by `is_day`; only the icon varies.

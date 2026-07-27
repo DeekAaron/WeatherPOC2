@@ -2,6 +2,39 @@
 
 All notable changes to WeatherPOC2 are recorded here. The **why** matters as much as the **what**.
 
+## [Unreleased] - 2026-07-27
+
+### Added
+- **Units — pure conversion, formatting, and preferences (`WeatherPoc2.Core.Units`)** (Story #77) —
+  the first slices of the Units feature, landed as pure Core domain logic ahead of any ViewModel
+  wiring or persistence, so the conversion arithmetic and display formatting are nailed down and
+  trivially testable in isolation (the same land-pure-first pattern as `HourlyWindow`, Story #68).
+  Nothing is DI-registered or consumed yet — the weather ViewModels still format inline; the rewire
+  onto `UnitFormatter` and the persistence of `UnitPreferences` land in later stories.
+  - **`TemperatureUnit` / `WindSpeedUnit` enums** — the user's per-measure display-unit choices
+    (`Celsius`/`Fahrenheit`; `KilometresPerHour`/`MilesPerHour`/`MetresPerSecond`/`Knots`). The first
+    member of each is the canonical unit the weather is always fetched and held in (PRD reqs 42–44).
+  - **`UnitPreferences` record** — the per-measure display choice as one value, with a static
+    `Default` of the canonical units (°C, km/h). Value-equality (record) is a deliberate contract:
+    later Features decide whether a unit change is a no-op by comparing preferences, and `Default` is
+    what a first run or any failed/absent persistence read falls back to.
+  - **`UnitConversion` (pure static)** — deterministic conversion from canonical units (°C, km/h) to
+    the chosen display unit (the Fahrenheit formula; the mph / m/s / knots factors). Returns a
+    **number only** — no rounding, no suffix, no I/O — and is total over the closed enums (no failure
+    path), which is exactly the "re-render can never fail or hit the network" guarantee ADR-0001 and
+    PRD req 46 require.
+  - **`UnitFormatter` (thin presentation)** — the single place that composes `UnitConversion` with
+    whole-number away-from-zero rounding and the unit suffix into the display string
+    (`18°C` unspaced, `12 km/h` spaced), rendering digits with `InvariantCulture` so the device
+    locale never alters them. **Why separate from `UnitConversion`:** keeping the arithmetic pure and
+    number-only lets it be table-tested on exact values, while the formatting rules live in one thin
+    layer the weather ViewModels will call instead of each holding their own format strings.
+  - Covered by `UnitConversionTests` (every temperature/wind-speed target unit incl. canonical
+    pass-through and boundary values like −40° and the 32°F freezing point), `UnitFormatterTests`
+    (whole-number rounding, the `.5` away-from-zero case, negative-near-zero collapsing to `0` with no
+    sign, and the spaced-vs-unspaced suffix), and `UnitPreferencesTests` (the canonical `Default` and
+    record value-equality). Tier-1, $0, every commit. No new packages.
+
 ## [Unreleased] - 2026-07-26
 
 ### Added
