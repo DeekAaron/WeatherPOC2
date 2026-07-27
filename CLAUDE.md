@@ -112,6 +112,37 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   and **`INavigator`** (`GoToCurrentConditionsAsync`/`GoToSearchAsync`, implemented by the app head over
   Shell). Covered by `HourlyWindowTests`, `HourlyForecastViewModelTests`, `LocationSearchViewModelTests`,
   `LoadedLocationTests` (Tier-1, $0).
+  Core also carries the first pure slices of **Units** (`WeatherPoc2.Core.Units`, Story #77) — the
+  `TemperatureUnit`/`WindSpeedUnit` enums (canonical member first — °C, km/h), the `UnitPreferences`
+  record (per-measure choice, value-equality, a canonical `Default` used on first run or any
+  failed/absent read), the pure `UnitConversion` (canonical → display unit, number only — no rounding,
+  no suffix, no I/O, total over the closed enums so a unit re-render can never fail or hit the network
+  per ADR-0001), and the thin `UnitFormatter` (composes `UnitConversion` with whole-number
+  away-from-zero rounding + the unit suffix into the display string — `18°C` unspaced, `12 km/h`
+  spaced, digits via `InvariantCulture`). These are pure Core types landed ahead of wiring: none is
+  DI-registered in `AddWeatherPoc2Core` or consumed by a ViewModel yet (the weather ViewModels still
+  format inline; the rewire onto `UnitFormatter` and the persistence of `UnitPreferences` land in later
+  stories). Covered by `UnitConversionTests`, `UnitFormatterTests`, `UnitPreferencesTests` (Tier-1, $0).
+  Core also carries the **Persistence Store** seam (`WeatherPoc2.Core.Persistence`, Story #78, per
+  ADR-0003) — the durable-state contract the PRD's module decomposition names, landed ahead of wiring.
+  `IPersistenceStore` (`LoadAsync<T>(key)` / `SaveAsync<T>(key, value)`) is backed by
+  `JsonPersistenceStore`: one `System.Text.Json` document per key (`{key}.json`) under an injected
+  `IAppDataPathProvider` base directory (the MAUI head will return `FileSystem.AppDataDirectory`; Core
+  stays MAUI-free and is Tier-1 testable against a temp dir), enums stored **by name** via
+  `JsonStringEnumConverter` (stable across enum reordering). Read is **fail-soft + fail-visible**: an
+  absent file returns `default` with no log (normal first run); a malformed / unreadable / unknown-enum
+  / hostile deep-nesting document returns `default` + a Warning, never throwing to the caller (ADR-0001 /
+  Principle 1). Writes are **atomic** (serialize to `{key}.json.tmp`, then `File.Replace` when the live
+  file exists else `File.Move`) so an interrupted write never truncates the live file, guarded by a
+  per-key `SemaphoreSlim` gate that serializes concurrent writers; a write failure is Warning-logged and
+  the change kept in memory only, never thrown. `Directory.CreateDirectory` runs before writing (the
+  app-data dir is not assumed to pre-exist). A `ValidateKey` **security guard** rejects an empty,
+  separator-bearing, `..`-traversal, or rooted/absolute key (`ArgumentException`) before any file access,
+  so a key can never escape the injected base directory (arbitrary read/overwrite). Scoped to the `units`
+  key today, but nothing consumes it yet — not DI-registered in `AddWeatherPoc2Core`, and no MAUI-head
+  `IAppDataPathProvider` implementation exists yet; Search History and Favourites extend the same seam
+  with their own keys/documents later. Covered by `JsonPersistenceStoreTests` +
+  `JsonPersistenceStoreSecurityTests` (Tier-1, $0, real file I/O against a temp directory).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -138,4 +169,7 @@ the Feature's CI setup. Features 1–2 (Current Temperature, Current Conditions)
 Forecast) and Feature 3 (Location Search) are built end-to-end — including the MAUI app-head **Location
 Search screen** + `MauiNavigator` `INavigator` implementation and the Current Conditions page (Layout C
 panel + Hourly strip + the always-available magnifying-glass toolbar). The remaining domain modules from
-`PRD.md` (Search History, Favourites, Units, persistence, launch resolver) are not built yet.
+`PRD.md` (Search History, Favourites, launch resolver) are not built yet; the **Persistence Store** has
+its Core seam built (`IPersistenceStore` / `JsonPersistenceStore` / `IAppDataPathProvider`, per ADR-0003)
+but is not yet DI-registered, consumed, or backed by a MAUI-head path provider; Units has its pure Core
+slices (conversion, formatting, preferences) but is not yet wired into the ViewModels or persisted.

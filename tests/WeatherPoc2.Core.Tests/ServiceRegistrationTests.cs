@@ -89,4 +89,56 @@ public class ServiceRegistrationTests
 
         Assert.Equal(1_048_576, client.MaxResponseContentBufferSize);
     }
+
+    [Fact]
+    public void AddWeatherPoc2Core_resolves_the_units_graph_when_a_path_provider_is_supplied()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<WeatherPoc2.Core.Persistence.IAppDataPathProvider>(
+            new FakePathProvider()); // the host (MauiProgram) supplies the MAUI one
+        services.AddWeatherPoc2Core();
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        Assert.NotNull(provider.GetRequiredService<WeatherPoc2.Core.Persistence.IPersistenceStore>());
+        Assert.NotNull(provider.GetRequiredService<WeatherPoc2.Core.Units.IUnitsService>());
+        Assert.NotNull(provider.GetRequiredService<WeatherPoc2.Core.Units.UnitFormatter>());
+        Assert.NotNull(provider.GetRequiredService<WeatherPoc2.Core.ViewModels.SettingsViewModel>());
+    }
+
+    [Fact]
+    public void The_settings_view_model_is_transient()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<WeatherPoc2.Core.Persistence.IAppDataPathProvider>(new FakePathProvider());
+        services.AddWeatherPoc2Core();
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        Assert.NotSame(
+            provider.GetRequiredService<WeatherPoc2.Core.ViewModels.SettingsViewModel>(),
+            provider.GetRequiredService<WeatherPoc2.Core.ViewModels.SettingsViewModel>());
+    }
+
+    [Fact]
+    public void The_units_service_is_a_singleton()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<WeatherPoc2.Core.Persistence.IAppDataPathProvider>(new FakePathProvider());
+        services.AddWeatherPoc2Core();
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+
+        Assert.Same(
+            provider.GetRequiredService<WeatherPoc2.Core.Units.IUnitsService>(),
+            provider.GetRequiredService<WeatherPoc2.Core.Units.IUnitsService>());
+    }
+
+    private sealed class FakePathProvider : WeatherPoc2.Core.Persistence.IAppDataPathProvider
+    {
+        public string GetAppDataDirectory() => Path.Combine(Path.GetTempPath(), "weatherpoc2-di-" + Guid.NewGuid().ToString("N"));
+    }
 }

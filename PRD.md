@@ -132,6 +132,12 @@ paths or code are pinned here — those live in per-Feature Specs and Plans.
   user's chosen display units (temperature formula; wind-speed factors for mph, m/s, knots).
   Per **ADR-0001**, weather is always fetched and held in canonical units and converted in-app for
   display; a unit change re-renders held data and never triggers or can fail a network call.
+  Implemented as three separated pieces: `UnitConversion` is a **number-only** pure function (no
+  rounding, no suffix, no I/O, total over the closed unit enums — this is the "cannot fail" guarantee),
+  `UnitFormatter` is the single thin presentation layer that composes conversion with whole-number
+  rounding and the unit suffix into the display string, and `UnitPreferences` is the per-measure choice
+  as one value-equality record with a canonical `Default` — the value the Persistence Store durably
+  holds and the fallback on a first run or a failed/absent read.
 - **Weather Condition Mapper** — pure mapping from Open-Meteo's numeric WMO weather code to the
   app's curated small set of Weather Conditions, and selection of the day or night Weather Icon
   variant from the `is_day` flag. The condition word is unchanged by `is_day`; only the icon varies.
@@ -150,6 +156,11 @@ paths or code are pinned here — those live in per-Feature Specs and Plans.
   top Favourite becomes the most-recent history entry, so the following launch resolves via history.
 - **Persistence Store** — the durable-state seam. Persists Search History, Favourites, and Units
   across restarts; deliberately never persists weather data (Current Conditions / Hourly Forecast).
+  Realised (per ADR-0003) as `IPersistenceStore` (`LoadAsync<T>(key)` / `SaveAsync<T>(key, value)`)
+  backed by `JsonPersistenceStore` — one `System.Text.Json` document per key under an injected
+  `IAppDataPathProvider` base directory, reads fail-soft to defaults and writes atomic + Warning-logged
+  on failure, so a persistence fault can never fail the weather view. Each concern owns its own key
+  (`units`, then `search-history`, `favourites`); no shared document to schema-merge.
 - **ViewModels (MVVM)** — one per screen area (Current Conditions, Hourly Forecast, Location Search),
   orchestrating the modules above. Per Technical-Context **MVVM-only**: all UI logic lives in
   ViewModels bound to Views; code-behind holds no business logic. ViewModels own the refresh policy —

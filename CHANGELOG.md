@@ -2,6 +2,78 @@
 
 All notable changes to WeatherPOC2 are recorded here. The **why** matters as much as the **what**.
 
+## [Unreleased] - 2026-07-27
+
+### Added
+- **Persistence store seam (`WeatherPoc2.Core.Persistence`)** (Story #78) — the durable-state seam
+  ADR-0003 governs, landed as pure Core logic ahead of any wiring (the same land-pure-first pattern as
+  Units, Story #77). It is the single mechanism Units, Search History, and Favourites will all persist
+  through, so standing it up correctly once — fail-soft reads, atomic writes, host-agnostic — is what
+  lets those later Features *extend* a pattern instead of each inventing storage.
+  - **`IPersistenceStore`** — `LoadAsync<T>(key)` / `SaveAsync<T>(key, value)`, the two-method durable
+    contract. Async throughout (Technical-Context Principle 4).
+  - **`JsonPersistenceStore`** — backs the seam with **one `System.Text.Json` document per key**
+    (`{key}.json`) under an injected base directory. Enums are serialized **by name**
+    (`JsonStringEnumConverter`) so reordering an enum never re-maps a persisted value. **Why one file
+    per key rather than MAUI `Preferences`:** Search History and Favourites persist *lists of structured
+    `Location`s*, which `Preferences` can only hold as an opaque blob-under-one-key — choosing the
+    document mechanism now avoids a storage migration mid-roadmap (ADR-0003, D2).
+  - **`IAppDataPathProvider`** — the one-method seam that supplies the base directory. The MAUI head
+    will implement it with `FileSystem.AppDataDirectory`; Core depends only on the abstraction, keeping
+    the JSON logic MAUI-free and unit-testable against a **real temp directory** (no MAUI SDK).
+  - **Fail-soft + fail-visible reads (ADR-0001 / Principle 1):** an absent file returns the caller's
+    defaults with no log (normal first run); a malformed, unreadable, unknown-enum, or hostile
+    deeply-nested document returns defaults and logs a **Warning** — never throwing to the caller, so a
+    tampered or corrupt preferences file can never fail the weather view.
+  - **Atomic, serialized writes:** each write serializes to a `.tmp` sibling then `File.Replace`es (or
+    `File.Move`s on first write) the live file, so an interrupted write never truncates it (a torn file
+    would read back malformed and silently reset a just-made preference across restart — a PRD-48
+    violation). A per-key `SemaphoreSlim` gate serializes concurrent writers to one key; a write failure
+    is Warning-logged and the change kept in memory only, never thrown. `Directory.CreateDirectory` runs
+    first because `FileSystem.AppDataDirectory` is not guaranteed to pre-exist on Windows unpackaged.
+  - **Path-traversal guard (security, from `/check-security-design`):** `ValidateKey` rejects an empty,
+    separator-bearing, `..`-traversal, or rooted/absolute key with `ArgumentException` **before any file
+    access** on both Load and Save — the store builds `{base}/{key}.json`, so an unguarded key could
+    escape the base directory (arbitrary read on load, arbitrary overwrite on save). This is a
+    caller-contract guard, distinct from the fail-soft handling of file *content*.
+  - Scoped to the `units` key today, but **nothing consumes it yet** — it is not DI-registered in
+    `AddWeatherPoc2Core`, and no MAUI-head `IAppDataPathProvider` implementation exists; the rewire and
+    the platform provider land in later stories.
+  - Covered by `JsonPersistenceStoreTests` (round-trip, by-name enums, absent → defaults, corrupt/
+    unknown-enum → defaults + Warning, dir-not-pre-existing create, atomic-replace preserves prior
+    value, no `.tmp` left behind) and `JsonPersistenceStoreSecurityTests` (each rejected-key shape fails
+    before any file touch; hostile deep-nesting fails closed to defaults + Warning). Tier-1, $0, every
+    commit. No new packages (`System.Text.Json` is the built-in serializer already in use).
+- **Units — pure conversion, formatting, and preferences (`WeatherPoc2.Core.Units`)** (Story #77) —
+  the first slices of the Units feature, landed as pure Core domain logic ahead of any ViewModel
+  wiring or persistence, so the conversion arithmetic and display formatting are nailed down and
+  trivially testable in isolation (the same land-pure-first pattern as `HourlyWindow`, Story #68).
+  Nothing is DI-registered or consumed yet — the weather ViewModels still format inline; the rewire
+  onto `UnitFormatter` and the persistence of `UnitPreferences` land in later stories.
+  - **`TemperatureUnit` / `WindSpeedUnit` enums** — the user's per-measure display-unit choices
+    (`Celsius`/`Fahrenheit`; `KilometresPerHour`/`MilesPerHour`/`MetresPerSecond`/`Knots`). The first
+    member of each is the canonical unit the weather is always fetched and held in (PRD reqs 42–44).
+  - **`UnitPreferences` record** — the per-measure display choice as one value, with a static
+    `Default` of the canonical units (°C, km/h). Value-equality (record) is a deliberate contract:
+    later Features decide whether a unit change is a no-op by comparing preferences, and `Default` is
+    what a first run or any failed/absent persistence read falls back to.
+  - **`UnitConversion` (pure static)** — deterministic conversion from canonical units (°C, km/h) to
+    the chosen display unit (the Fahrenheit formula; the mph / m/s / knots factors). Returns a
+    **number only** — no rounding, no suffix, no I/O — and is total over the closed enums (no failure
+    path), which is exactly the "re-render can never fail or hit the network" guarantee ADR-0001 and
+    PRD req 46 require.
+  - **`UnitFormatter` (thin presentation)** — the single place that composes `UnitConversion` with
+    whole-number away-from-zero rounding and the unit suffix into the display string
+    (`18°C` unspaced, `12 km/h` spaced), rendering digits with `InvariantCulture` so the device
+    locale never alters them. **Why separate from `UnitConversion`:** keeping the arithmetic pure and
+    number-only lets it be table-tested on exact values, while the formatting rules live in one thin
+    layer the weather ViewModels will call instead of each holding their own format strings.
+  - Covered by `UnitConversionTests` (every temperature/wind-speed target unit incl. canonical
+    pass-through and boundary values like −40° and the 32°F freezing point), `UnitFormatterTests`
+    (whole-number rounding, the `.5` away-from-zero case, negative-near-zero collapsing to `0` with no
+    sign, and the spaced-vs-unspaced suffix), and `UnitPreferencesTests` (the canonical `Default` and
+    record value-equality). Tier-1, $0, every commit. No new packages.
+
 ## [Unreleased] - 2026-07-26
 
 ### Added
