@@ -5,6 +5,38 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-27
 
 ### Added
+- **Search History coordinator wired end-to-end + the Recent list** (Story #86) — the load path now
+  runs through a single coordinator that records history, sets the loaded Location, and persists, so
+  Search History reflects where the user actually looked (PRD reqs 28/31/32) rather than being an
+  unwired pure state machine. This is the story that turns the previously-landed `SearchHistory` machine
+  and the proven `search-history` document seam (Story #84) into a working feature in Core.
+  - **New `ILocationLoader` / `LocationLoader`** — the single load choke point every Location load
+    passes through (picking a search candidate today; tapping a Recent entry; opening a Favourite
+    later). `LoadAsync` does **record -> set holder -> persist, in that exact order** — the ordering is
+    the contract: recording raises `SearchHistory.Changed` so the Recent list updates, setting
+    `ILoadedLocation` means the Current Conditions on-appearing fetch reads the just-loaded Location, and
+    persistence happens last. `HydrateAsync` reads the `search-history` document once at startup and
+    `Seed`s the machine. Registered as a **singleton** so every load path and the startup hydration
+    share one instance. The coordinator owns the persistence read/write (`IPersistenceStore`) so
+    `SearchHistory` stays pure and I/O-free; because the store fails soft (Warning-logged, never thrown
+    per ADR-0003), a persistence fault can never block the load or the navigation that follows.
+  - **`SearchHistory` + `ILocationLoader` DI-registered** in `AddWeatherPoc2Core` (both singletons),
+    alongside the existing `ILoadedLocation`. Why singleton: the one shared state machine and one load
+    choke point must be the same instances the transient search view-model and the startup hydration
+    all see.
+  - **`LocationSearchViewModel` rewired through the coordinator** — `SelectCandidateCommand` now mints a
+    `Location` and hands it to `ILocationLoader.LoadAsync` instead of setting `ILoadedLocation` itself
+    (the VM no longer touches the holder directly); a new **`SelectRecentCommand`** loads an existing
+    Recent entry the same way (reloading moves it to most-recent, no gateway call); and a new **`Recent`**
+    `ObservableCollection<Location>` mirrors `SearchHistory.Entries` most-recent-first, rebuilt on every
+    `SearchHistory.Changed`.
+  - **Leak fix — `LocationSearchViewModel` is now `IDisposable`** and detaches its `SearchHistory.Changed`
+    subscription on `Dispose`, because the VM is **transient** while `SearchHistory` is a **singleton**: an
+    un-detached handler would root every torn-down search page forever (and rebuild a dead instance's
+    Recent). The handler is held in a field (not a throwaway lambda) so it is removable, and `Dispose` is
+    idempotent — the same pattern as the Story #81 `CurrentConditionsViewModel` units-subscription detach.
+  - Covered by new `LocationLoaderTests` and `SearchHistoryTests`, and expanded
+    `LocationSearchViewModelTests` / `ServiceRegistrationTests` (Tier-1, $0). No new packages.
 - **`search-history` persistence document seam proven end-to-end** (Story #84) — a **test-only** story
   (no production code added or changed) that pins the durable shape of the Search History document
   through the merged Feature-5 `JsonPersistenceStore`, with **real file I/O** against a per-test temp
