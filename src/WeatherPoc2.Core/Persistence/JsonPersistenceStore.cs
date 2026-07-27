@@ -52,8 +52,15 @@ public sealed class JsonPersistenceStore : IPersistenceStore
     {
         var directory = _paths.GetAppDataDirectory();
         var path = Path.Combine(directory, key + ".json");
-        Directory.CreateDirectory(directory);
-        await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, value, Options, cancellationToken);
+        try
+        {
+            Directory.CreateDirectory(directory); // Seam 2: the app-data dir is not guaranteed to pre-exist
+            await using var stream = File.Create(path);
+            await JsonSerializer.SerializeAsync(stream, value, Options, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            _logger.LogWarning(ex, "Persistence: could not write '{Key}' at {Path} — change kept in memory only", key, path);
+        }
     }
 }

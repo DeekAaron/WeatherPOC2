@@ -84,4 +84,54 @@ public class JsonPersistenceStoreTests
         Assert.Null(loaded);
         Assert.Contains(log.Entries, e => e.Level == LogLevel.Warning);
     }
+
+    [Fact]
+    public async Task SaveAsync_creates_the_base_directory_when_it_does_not_exist()
+    {
+        var (store, paths, _) = NewStore();
+        using var _p = paths;
+        Assert.False(Directory.Exists(paths.GetAppDataDirectory())); // TempAppDataPathProvider does not pre-create
+
+        await store.SaveAsync("units", UnitPreferences.Default);
+
+        Assert.True(File.Exists(Path.Combine(paths.GetAppDataDirectory(), "units.json")));
+    }
+
+    [Fact]
+    public async Task LoadAsync_soft_defaults_a_missing_member_and_does_not_log()
+    {
+        var (store, paths, log) = NewStore();
+        using var _p = paths;
+        Directory.CreateDirectory(paths.GetAppDataDirectory());
+        await File.WriteAllTextAsync(
+            Path.Combine(paths.GetAppDataDirectory(), "units.json"),
+            "{\"temperature\":\"Fahrenheit\"}"); // windSpeed absent
+
+        var loaded = await store.LoadAsync<UnitPreferences>("units");
+
+        // System.Text.Json soft-defaults the absent positional member (forward-compatible) —
+        // not null, no Warning. (Contrast malformed/unknown-enum, which are null + Warning.)
+        Assert.NotNull(loaded);
+        Assert.Equal(new UnitPreferences(TemperatureUnit.Fahrenheit, WindSpeedUnit.KilometresPerHour), loaded);
+        Assert.Empty(log.Entries);
+    }
+
+    [Fact]
+    public async Task SaveAsync_logs_a_warning_and_does_not_throw_when_the_write_fails()
+    {
+        // Point the store at a path that is an existing FILE, so Directory.CreateDirectory throws
+        // (cross-platform). The store must catch it, log a Warning, and NOT throw to the caller (D5).
+        var tempFile = Path.Combine(Path.GetTempPath(), "weatherpoc2-notadir-" + Guid.NewGuid().ToString("N"));
+        await File.WriteAllTextAsync(tempFile, "x");
+        try
+        {
+            var log = new CapturingLogger<JsonPersistenceStore>();
+            var store = new JsonPersistenceStore(new FixedPathProvider(tempFile), log);
+
+            await store.SaveAsync("units", UnitPreferences.Default); // must not throw
+
+            Assert.Contains(log.Entries, e => e.Level == LogLevel.Warning);
+        }
+        finally { File.Delete(tempFile); }
+    }
 }
