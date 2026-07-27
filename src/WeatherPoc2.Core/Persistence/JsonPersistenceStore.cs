@@ -30,8 +30,22 @@ public sealed class JsonPersistenceStore : IPersistenceStore
     public async Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         var path = Path.Combine(_paths.GetAppDataDirectory(), key + ".json");
-        await using var stream = File.OpenRead(path);
-        return await JsonSerializer.DeserializeAsync<T>(stream, Options, cancellationToken);
+        if (!File.Exists(path))
+            return default; // absent = normal first run; no log (D5)
+
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            return await JsonSerializer.DeserializeAsync<T>(stream, Options, cancellationToken);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            // Any content-parse or read failure fails closed to defaults + a Warning (never to the
+            // caller): malformed syntax, an unknown enum name, or a hostile deep-nesting JsonException
+            // all land here, so a tampered/corrupt file can never fail the weather view (ADR-0001 / D5).
+            _logger.LogWarning(ex, "Persistence: could not read '{Key}' at {Path} — using defaults", key, path);
+            return default;
+        }
     }
 
     public async Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default)
