@@ -36,6 +36,7 @@ public sealed class JsonPersistenceStore : IPersistenceStore
 
     public async Task<T?> LoadAsync<T>(string key, CancellationToken cancellationToken = default)
     {
+        ValidateKey(key);
         var path = Path.Combine(_paths.GetAppDataDirectory(), key + ".json");
         if (!File.Exists(path))
             return default; // absent = normal first run; no log (D5)
@@ -57,6 +58,7 @@ public sealed class JsonPersistenceStore : IPersistenceStore
 
     public async Task SaveAsync<T>(string key, T value, CancellationToken cancellationToken = default)
     {
+        ValidateKey(key);
         var directory = _paths.GetAppDataDirectory();
         var path = Path.Combine(directory, key + ".json");
         var gate = Gates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
@@ -86,5 +88,25 @@ public sealed class JsonPersistenceStore : IPersistenceStore
         {
             gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Rejects any <paramref name="key"/> that is not a single path segment — a caller-contract guard
+    /// (distinct from the D5 fail-soft handling of file <em>content</em>) that runs before any file
+    /// access. The store builds <c>{basePath}/{key}.json</c>; a key with a directory separator, a
+    /// <c>..</c> traversal segment, or a rooted/absolute path would escape the injected base directory
+    /// (arbitrary read on load, arbitrary overwrite on save). Only <c>units</c> is used today, but this
+    /// is the generic seam Features 6/7 extend, so the guard belongs here.
+    /// </summary>
+    private static void ValidateKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            throw new ArgumentException("Persistence key must be a non-empty single path segment.", nameof(key));
+        if (key.Contains('/') || key.Contains('\\'))
+            throw new ArgumentException($"Persistence key '{key}' must not contain a directory separator.", nameof(key));
+        if (key.Contains(".."))
+            throw new ArgumentException($"Persistence key '{key}' must not contain a '..' traversal segment.", nameof(key));
+        if (Path.IsPathRooted(key))
+            throw new ArgumentException($"Persistence key '{key}' must not be a rooted/absolute path.", nameof(key));
     }
 }
