@@ -146,7 +146,15 @@ paths or code are pinned here — those live in per-Feature Specs and Plans.
   including past hours. Given a clock and the Location's timezone it is fully deterministic.
 - **Search History** — a pure state machine over up to four Locations, recency-ordered and keyed by
   **Location identity** (Open-Meteo id / coordinates). Loading a Location moves it to most-recent
-  (de-duping by identity); a genuinely new load at capacity evicts the oldest.
+  (de-duping by identity); a genuinely new load at capacity evicts the oldest. Realised as the pure,
+  I/O-free `SearchHistory` (`Record` / `Seed` / a `Changed` event), fed exclusively through the **load
+  coordinator** below so no load path can bypass history.
+- **Load coordinator** — the single choke point every Location *load* passes through (picking a search
+  candidate, tapping a Recent entry, later opening a Favourite). Realised as `ILocationLoader` /
+  `LocationLoader`: one `LoadAsync` that **records to Search History → sets the Loaded-Location holder →
+  persists**, in that order (the ordering is the contract), plus a startup `HydrateAsync` that seeds the
+  history from persistence. Owning the history's persistence here keeps the state machine pure and means a
+  persistence fault (fail-soft in the Persistence Store) never blocks a load or its navigation.
 - **Favourites** — a pure state machine over up to five user-curated Locations, ordered
   most-recently-marked first. Adding at capacity is refused (block-on-overflow) with the message
   "Favourites are full — remove one first"; unmarking removes; recency never evicts. Favourite is a
@@ -168,10 +176,11 @@ paths or code are pinned here — those live in per-Feature Specs and Plans.
   failures as friendly in-app copy, never swallowing them (fail-visible).
 - **Loaded-Location holder** — the shared seam through which a Location loaded on one screen becomes
   the Location another screen reads. Holds the single currently-loaded Location; a Location Search
-  selection mints a Location, sets it here, then navigates, and Current Conditions reads it on
-  appearing (the ordering is the contract). This is Context.MD's "the loaded Location" that Search
-  History and Favourites will later key on. In-memory in this Feature — the durable copy is the
-  Persistence Store's concern; nothing weather-related is ever held here.
+  selection mints a Location, hands it to the **load coordinator** (which records history, sets this
+  holder, then persists), and navigates, and Current Conditions reads it on appearing (the ordering is
+  the contract). This is Context.MD's "the loaded Location" that Search History and Favourites key on.
+  In-memory in this Feature — the durable copy is the Persistence Store's concern; nothing
+  weather-related is ever held here.
 - **Navigation abstraction** — screen navigation the ViewModels request without depending on MAUI, so
   they stay unit-testable per the MVVM-only principle. The app head implements it over the platform's
   Shell routing; ViewModels only ever see the abstraction.

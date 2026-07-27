@@ -62,12 +62,15 @@ Built so far:
   display children, and exposes an `OpenSearchCommand` routing to search via `INavigator` (and, as of
   Story #81, is `IDisposable`, propagating `Dispose` to both transient children so they detach from the
   singleton `IUnitsService.Changed` on page teardown; the coordinator holds no subscription itself); the
-  **`LocationSearchViewModel`** (search / no-match / error, and select-a-candidate -> set the shared
-  holder -> navigate); and the `AddWeatherPoc2Core` DI extension (`ServiceCollectionExtensions` — named
-  `HttpClient` with a 15 s timeout / 1 MB response cap, singleton `IWeatherGateway`, the pure stateless
-  singletons `WeatherConditionMapper` and `HourlyWindow`, singleton `ILoadedLocation`->`LoadedLocation`,
-  and the `WeatherViewModel` coordinator + both display-only children + `LocationSearchViewModel` as
-  transients; `INavigator` is supplied by the MAUI head). Tested by the
+  **`LocationSearchViewModel`** (search / no-match / error, and — as of Story #86 — both select-a-candidate
+  and tap-a-Recent-entry load through the single `ILocationLoader` coordinator (record -> set holder ->
+  persist) then navigate, exposing a `Recent` list that mirrors `SearchHistory`, and is `IDisposable` to
+  detach its `SearchHistory.Changed` subscription); and the `AddWeatherPoc2Core` DI extension
+  (`ServiceCollectionExtensions` — named `HttpClient` with a 15 s timeout / 1 MB response cap, singleton
+  `IWeatherGateway`, the pure stateless singletons `WeatherConditionMapper` and `HourlyWindow`, singleton
+  `ILoadedLocation`->`LoadedLocation`, singleton `SearchHistory` + `ILocationLoader`->`LocationLoader` (the
+  single load choke point), and the `WeatherViewModel` coordinator + both display-only children +
+  `LocationSearchViewModel` as transients; `INavigator` is supplied by the MAUI head). Tested by the
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
   asserting the full widened `WeatherBundle` deserializes (temperature, wind speed, current-hour chance
@@ -115,12 +118,25 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   Chance unchanged); a null hour temperature keeps the "—" placeholder — and is `IDisposable` to detach
   the subscription. Core also carries the **Location Search** orchestration: **`LocationSearchViewModel`**
   (`Query`, `Candidates`, `StatusMessage`/`ErrorMessage`, a `SearchCommand` that no-ops on blank input
-  and shows "No matching places found" on an empty result, and a `SelectCandidateCommand` that mints a
-  `Location`, sets the shared holder, then navigates), plus the two MAUI-free seams it introduces —
-  **`ILoadedLocation`**/`LoadedLocation` (in-memory holder of the one loaded Location, no persistence)
-  and **`INavigator`** (`GoToCurrentConditionsAsync`/`GoToSearchAsync`, implemented by the app head over
-  Shell). Covered by `HourlyWindowTests`, `HourlyForecastViewModelTests`, `LocationSearchViewModelTests`,
-  `LoadedLocationTests` (Tier-1, $0).
+  and shows "No matching places found" on an empty result, and — as of Story #86 — a `SelectCandidateCommand`
+  that mints a `Location` and a `SelectRecentCommand` that takes an existing one, both loading through the
+  single `ILocationLoader` coordinator (the VM no longer sets `ILoadedLocation` itself) then navigating,
+  plus a `Recent` `ObservableCollection<Location>` mirroring `SearchHistory.Entries` most-recent-first and
+  rebuilt on every `SearchHistory.Changed`; the VM is `IDisposable` to detach that subscription — it is
+  transient while `SearchHistory` is a singleton, so an un-detached handler would root every dead page,
+  mirroring the Story #81 `CurrentConditionsViewModel` pattern), plus the MAUI-free seams it sits over —
+  **`ILoadedLocation`**/`LoadedLocation` (in-memory holder of the one loaded Location, no persistence),
+  **`INavigator`** (`GoToCurrentConditionsAsync`/`GoToSearchAsync`, implemented by the app head over
+  Shell), and (Story #86) the **Search History** pair: **`SearchHistory`** — the pure in-memory state
+  machine over the four most-recently-*loaded* Locations (dedupe-by-identity -> move-to-front -> cap 4,
+  keyed by Open-Meteo id else coordinates, `Label` never part of identity; `Record` for a load, `Seed` to
+  hydrate/normalise a stored list, `Changed` raised on any mutation) — and **`ILocationLoader`**/`LocationLoader`
+  — the single load choke point every load passes through (`LoadAsync`: record -> set holder -> persist,
+  in that order; `HydrateAsync`: read the `search-history` document once at startup and `Seed` the machine),
+  a singleton owning the Search History persistence read/write via `IPersistenceStore` so the pure state
+  machine stays I/O-free and a save failure (fail-soft inside the store, ADR-0003) never blocks the load or
+  navigation. Covered by `HourlyWindowTests`, `HourlyForecastViewModelTests`, `LocationSearchViewModelTests`,
+  `LoadedLocationTests`, `SearchHistoryTests`, `LocationLoaderTests` (Tier-1, $0).
   Core also carries the first pure slices of **Units** (`WeatherPoc2.Core.Units`, Story #77) — the
   `TemperatureUnit`/`WindSpeedUnit` enums (canonical member first — °C, km/h), the `UnitPreferences`
   record (per-measure choice, value-equality, a canonical `Default` used on first run or any
@@ -154,10 +170,14 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   nullable `openMeteoId` round-tripping as `null`, an absent file loads as `null` with no log, a malformed
   document loads as `null` + a Warning, a parseable over-length/duplicate document is normalised by
   `SearchHistory.Seed`, and a save failure is caught + Warning-logged and never thrown to the caller — all
-  against a real temp directory through the Feature-5 store. Favourites extend the same seam with its own
-  key/document later, and the Search History coordinator/hydration + DI/MAUI wiring remain. Covered by
-  `JsonPersistenceStoreTests` + `JsonPersistenceStoreSecurityTests` and `SearchHistoryPersistenceTests`
-  (Tier-1, $0, real file I/O against a temp directory).
+  against a real temp directory through the Feature-5 store. As of Story #86 the `search-history` document
+  is wired end-to-end: `LocationLoader` persists `SearchHistory.Entries` under the `search-history` key on
+  every load and `HydrateAsync` reads it back at startup, both DI-registered — so the Search History
+  coordinator, its hydration, and the DI wiring are all done; only the MAUI-head wiring (calling
+  `HydrateAsync` on the dispatcher thread at startup and binding the `Recent` list in the search page)
+  remains. Favourites extend the same seam with its own key/document later. Covered by
+  `JsonPersistenceStoreTests` + `JsonPersistenceStoreSecurityTests`, `SearchHistoryPersistenceTests`,
+  `SearchHistoryTests`, and `LocationLoaderTests` (Tier-1, $0, real file I/O against a temp directory).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — calls
   `AddWeatherPoc2Core` and registers `CurrentConditionsPage` + `AppShell`), `App`/`AppShell` shell
   routing to a single Current Conditions page, and `Views/CurrentConditionsPage` — the **Layout C
@@ -183,8 +203,12 @@ schedule wiring lives in the repo yet — the trait makes the split possible; th
 the Feature's CI setup. Features 1–2 (Current Temperature, Current Conditions), Feature 4 (Hourly
 Forecast) and Feature 3 (Location Search) are built end-to-end — including the MAUI app-head **Location
 Search screen** + `MauiNavigator` `INavigator` implementation and the Current Conditions page (Layout C
-panel + Hourly strip + the always-available magnifying-glass toolbar). The remaining domain modules from
-`PRD.md` (Search History, Favourites, launch resolver) are not built yet. **Units** is now wired into the
+panel + Hourly strip + the always-available magnifying-glass toolbar). **Search History** is now built in
+Core (Story #86): the pure `SearchHistory` state machine, the `ILocationLoader`/`LocationLoader`
+load-coordinator with startup `HydrateAsync`, and the `LocationSearchViewModel` `Recent` list are all
+DI-wired, leaving only the MAUI-head hydration-at-startup call and the on-screen Recent binding (HITL
+platform-verification). The remaining domain modules from `PRD.md` (Favourites, launch resolver) are not
+built yet. **Units** is now wired into the
 display layer in Core: the two display ViewModels format Temperature/Wind Speed through `UnitFormatter` +
 `IUnitsService` and re-render on a units change (Story #81, ADR-0001 — no re-fetch, cannot fail), and
 `IUnitsService`/`UnitFormatter` are DI-registered in `AddWeatherPoc2Core`; the user's `UnitPreferences`

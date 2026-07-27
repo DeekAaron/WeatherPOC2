@@ -34,14 +34,20 @@ Early build. Delivered so far:
   Temperature and Wind Speed in the user's chosen Units and **re-renders instantly when the Units change**
   — with no re-fetch and no possibility of failure (ADR-0001) — by retaining the fetched canonical bundle
   and re-formatting it on a units change (Chance of Rain stays a percentage). Core also
-  carries the **`LocationSearchViewModel`** — search, no-match and error handling, and
-  select-a-candidate -> mint a `Location` -> set the shared loaded-Location holder -> navigate — over
-  two small MAUI-free seams it introduces: `ILoadedLocation` (an in-memory holder of the one currently
-  loaded Location, no persistence yet) and `INavigator` (a navigation abstraction the app head
-  implements over Shell). The OS-agnostic `AddWeatherPoc2Core` DI extension wires the whole graph up
-  (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway, the pure stateless
-  singletons mapper and `HourlyWindow`, singleton `ILoadedLocation`, and the `WeatherViewModel`
-  coordinator plus its two display-only children and the `LocationSearchViewModel` as transients).
+  carries the **`LocationSearchViewModel`** — search, no-match and error handling, and (as of Story #86)
+  both selecting a candidate and tapping a **Recent** entry load through a single load coordinator and then
+  navigate; the view-model exposes a `Recent` list mirroring the Search History and detaches its history
+  subscription on dispose. It sits over three small MAUI-free seams: `ILoadedLocation` (an in-memory holder
+  of the one currently loaded Location), `INavigator` (a navigation abstraction the app head implements over
+  Shell), and the new **Search History** pair — `SearchHistory` (a pure in-memory state machine over the
+  four most-recently-loaded Locations: de-dupe by identity, move-to-front, cap four) and `ILocationLoader`/
+  `LocationLoader`, the single load choke point every load passes through (record to history -> set the
+  loaded-Location holder -> persist, in that order), which also hydrates the history from the
+  `search-history` document at startup. The OS-agnostic `AddWeatherPoc2Core` DI extension wires the whole
+  graph up (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway, the pure
+  stateless singletons mapper and `HourlyWindow`, singletons `ILoadedLocation`, `SearchHistory`, and
+  `ILocationLoader`, and the `WeatherViewModel` coordinator plus its two display-only children and the
+  `LocationSearchViewModel` as transients).
 - **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
   `AddWeatherPoc2Core`, supplies the `INavigator` Shell implementation (`MauiNavigator`), and registers
   the pages + shell, and an `AppShell` that routes between a **Location Search** screen (the launch
@@ -108,7 +114,9 @@ Early build. Delivered so far:
   through it); the only remaining gap is the MAUI-head `IAppDataPathProvider` implementation, which
   `AddWeatherPoc2Core` deliberately leaves host-supplied and arrives with the platform-verification story.
 
-The remaining domain modules (Search History, Favourites, launch resolver) are
+**Search History** is now built in Core (the state machine, the load coordinator, startup hydration, and
+the search view-model's Recent list); only the MAUI-head startup-hydration call and on-screen Recent list
+remain. The remaining domain modules (Favourites, launch resolver) are
 not built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
