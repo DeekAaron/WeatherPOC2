@@ -88,8 +88,17 @@ Early build. Delivered so far:
   (`18°C`, `12 km/h`, rendered with `InvariantCulture`). These land ahead of any wiring — nothing is
   DI-registered or consumed yet; the weather ViewModels are rewired onto `UnitFormatter` and
   `UnitPreferences` is persisted in later stories.
+- **Persistence store** — the durable-state seam (`WeatherPoc2.Core.Persistence`, per ADR-0003):
+  `IPersistenceStore` (`LoadAsync<T>(key)` / `SaveAsync<T>(key, value)`) backed by
+  `JsonPersistenceStore`, one `System.Text.Json` document per key under an injected
+  `IAppDataPathProvider` base directory (the MAUI head supplies `FileSystem.AppDataDirectory`; Core
+  stays MAUI-free). Reads fail soft (absent → defaults with no log; corrupt/unreadable → defaults + a
+  Warning, never crashing the view); writes are atomic and serialized per key, and a key that contains
+  a separator, `..`, or an absolute path is rejected before any file access. Like Units, the seam is
+  landed ahead of wiring — nothing is DI-registered or consumed yet, and the MAUI-head path provider
+  arrives with the wiring story.
 
-The remaining domain modules (Search History, Favourites, persistence, launch resolver) are
+The remaining domain modules (Search History, Favourites, launch resolver) are
 not built yet. The desktop build/launch proof is owned by a
 follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
 single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the

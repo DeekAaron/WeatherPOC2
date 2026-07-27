@@ -5,6 +5,45 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-27
 
 ### Added
+- **Persistence store seam (`WeatherPoc2.Core.Persistence`)** (Story #78) — the durable-state seam
+  ADR-0003 governs, landed as pure Core logic ahead of any wiring (the same land-pure-first pattern as
+  Units, Story #77). It is the single mechanism Units, Search History, and Favourites will all persist
+  through, so standing it up correctly once — fail-soft reads, atomic writes, host-agnostic — is what
+  lets those later Features *extend* a pattern instead of each inventing storage.
+  - **`IPersistenceStore`** — `LoadAsync<T>(key)` / `SaveAsync<T>(key, value)`, the two-method durable
+    contract. Async throughout (Technical-Context Principle 4).
+  - **`JsonPersistenceStore`** — backs the seam with **one `System.Text.Json` document per key**
+    (`{key}.json`) under an injected base directory. Enums are serialized **by name**
+    (`JsonStringEnumConverter`) so reordering an enum never re-maps a persisted value. **Why one file
+    per key rather than MAUI `Preferences`:** Search History and Favourites persist *lists of structured
+    `Location`s*, which `Preferences` can only hold as an opaque blob-under-one-key — choosing the
+    document mechanism now avoids a storage migration mid-roadmap (ADR-0003, D2).
+  - **`IAppDataPathProvider`** — the one-method seam that supplies the base directory. The MAUI head
+    will implement it with `FileSystem.AppDataDirectory`; Core depends only on the abstraction, keeping
+    the JSON logic MAUI-free and unit-testable against a **real temp directory** (no MAUI SDK).
+  - **Fail-soft + fail-visible reads (ADR-0001 / Principle 1):** an absent file returns the caller's
+    defaults with no log (normal first run); a malformed, unreadable, unknown-enum, or hostile
+    deeply-nested document returns defaults and logs a **Warning** — never throwing to the caller, so a
+    tampered or corrupt preferences file can never fail the weather view.
+  - **Atomic, serialized writes:** each write serializes to a `.tmp` sibling then `File.Replace`es (or
+    `File.Move`s on first write) the live file, so an interrupted write never truncates it (a torn file
+    would read back malformed and silently reset a just-made preference across restart — a PRD-48
+    violation). A per-key `SemaphoreSlim` gate serializes concurrent writers to one key; a write failure
+    is Warning-logged and the change kept in memory only, never thrown. `Directory.CreateDirectory` runs
+    first because `FileSystem.AppDataDirectory` is not guaranteed to pre-exist on Windows unpackaged.
+  - **Path-traversal guard (security, from `/check-security-design`):** `ValidateKey` rejects an empty,
+    separator-bearing, `..`-traversal, or rooted/absolute key with `ArgumentException` **before any file
+    access** on both Load and Save — the store builds `{base}/{key}.json`, so an unguarded key could
+    escape the base directory (arbitrary read on load, arbitrary overwrite on save). This is a
+    caller-contract guard, distinct from the fail-soft handling of file *content*.
+  - Scoped to the `units` key today, but **nothing consumes it yet** — it is not DI-registered in
+    `AddWeatherPoc2Core`, and no MAUI-head `IAppDataPathProvider` implementation exists; the rewire and
+    the platform provider land in later stories.
+  - Covered by `JsonPersistenceStoreTests` (round-trip, by-name enums, absent → defaults, corrupt/
+    unknown-enum → defaults + Warning, dir-not-pre-existing create, atomic-replace preserves prior
+    value, no `.tmp` left behind) and `JsonPersistenceStoreSecurityTests` (each rejected-key shape fails
+    before any file touch; hostile deep-nesting fails closed to defaults + Warning). Tier-1, $0, every
+    commit. No new packages (`System.Text.Json` is the built-in serializer already in use).
 - **Units — pure conversion, formatting, and preferences (`WeatherPoc2.Core.Units`)** (Story #77) —
   the first slices of the Units feature, landed as pure Core domain logic ahead of any ViewModel
   wiring or persistence, so the conversion arithmetic and display formatting are nailed down and
