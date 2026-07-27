@@ -134,4 +134,32 @@ public class JsonPersistenceStoreTests
         }
         finally { File.Delete(tempFile); }
     }
+
+    [Fact]
+    public async Task Overlapping_SaveAsync_calls_to_one_key_never_leave_a_torn_file()
+    {
+        // Seam 1 concurrency/atomicity (c): the fire-and-forget picker path can start two overlapping
+        // writes to units.json. The per-key gate serializes them and the temp-file+rename is atomic, so
+        // the file is never truncated/partial — LoadAsync always returns a complete, parseable value
+        // equal to one of the issued preferences (never a torn document that resets to defaults).
+        var (store, paths, log) = NewStore();
+        using var _p = paths;
+        var a = new UnitPreferences(TemperatureUnit.Fahrenheit, WindSpeedUnit.Knots);
+        var b = new UnitPreferences(TemperatureUnit.Celsius, WindSpeedUnit.MilesPerHour);
+
+        // Fire both concurrently, many times, to exercise interleaving.
+        for (var i = 0; i < 50; i++)
+            await Task.WhenAll(store.SaveAsync("units", a), store.SaveAsync("units", b));
+
+        var loaded = await store.LoadAsync<UnitPreferences>("units");
+        Assert.NotNull(loaded);                    // never null → the file was never left torn/malformed
+        Assert.Contains(loaded, new[] { a, b });   // a complete one of the two, never a partial document
+        // Writes are *serialized* (one completes before the next begins), not dropped: a naive shared
+        // write to the same handle would fail the overlapping writer with a sharing violation and log a
+        // Warning (a silently-lost preference — a PRD-48 risk). The per-key gate means no write is ever
+        // dropped, so no Warning is logged.
+        Assert.DoesNotContain(log.Entries, e => e.Level == LogLevel.Warning);
+        // No orphaned temp file is left behind after the atomic rename.
+        Assert.False(File.Exists(Path.Combine(paths.GetAppDataDirectory(), "units.json.tmp")));
+    }
 }
