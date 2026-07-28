@@ -36,6 +36,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILoadedLocation, LoadedLocation>();   // shared across the app (search flow ↔ Current Conditions)
         services.AddSingleton<SearchHistory>();                     // pure state machine, one shared instance
         services.AddSingleton<ILocationLoader, LocationLoader>();   // the single load choke point (owns history persistence)
+        // Favourites (Feature 7, #48 D5) — the pure state machine + its persistence coordinator, both
+        // singleton so the star (WeatherViewModel) and the list (LocationSearchViewModel) share one instance.
+        services.AddSingleton<Favourites>();
+        services.AddSingleton<IFavouritesService, FavouritesService>();
         services.AddTransient<CurrentConditionsViewModel>();
         services.AddTransient<HourlyForecastViewModel>();
         services.AddTransient<WeatherViewModel>();
