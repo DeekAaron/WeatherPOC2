@@ -203,10 +203,23 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   order preserved most-recently-marked-first, nullable `openMeteoId` as `null`) with the same ADR-0003
   fail-soft recovery (absent → `null` no log; malformed → `null` + Warning; save failure caught +
   Warning-logged, never thrown) — proving the raw round-trip only; the Favourites domain invariant (dedupe +
-  cap five) is `Favourites.Seed`'s job, landing later. Covered by
+  cap five) is `Favourites.Seed`'s job, which has now landed (Story #91, see below). Covered by
   `JsonPersistenceStoreTests` + `JsonPersistenceStoreSecurityTests`, `SearchHistoryPersistenceTests`,
   `SearchHistoryTests`, `LocationLoaderTests`, and `JsonPersistenceStoreFavouritesTests` (Tier-1, $0, real
   file I/O against a temp directory).
+  Core also carries the pure **Favourites** state machine (`WeatherPoc2.Core.Weather`, Story #91) — the
+  `Favourites` in-memory state machine over up to five user-curated Locations, most-recently-marked-first
+  and distinct by the shared `LocationIdentity` predicate (`Label` never part of identity), and the
+  `MarkResult` enum (`Marked` / `AlreadyFavourite` / `RefusedFull`). `Mark` inserts at the front, no-ops
+  with a signal when already present (`AlreadyFavourite`), and **refuses at capacity five rather than
+  evicting** (`RefusedFull` — recency never drops a pinned Favourite, Spec D3); `Unmark` removes the
+  identity-equal entry (returns false, no change, when absent); `IsFavourite` tests membership; a `Changed`
+  event fires only on a real mutation (never on a no-op). `Seed` **normalises rather than trusts** at the
+  persistence trust boundary — total/never-throws for any input, dropping null elements, deduping by
+  identity keeping the front-most occurrence, then capping to the first five — so a parseable-but-invalid
+  `favourites` document can never violate the invariant. Pure and I/O-free: persistence (via the proven
+  `favourites` seam) and the friendly `RefusedFull` copy ("Favourites are full — remove one first") are the
+  coordinator's / ViewModel's job, both deferred to later stories. Covered by `FavouritesTests` (Tier-1, $0).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — registers the
   host-supplied `IAppDataPathProvider`->`MauiAppDataPathProvider` **before** `AddWeatherPoc2Core` so the
   persistence graph — `JsonPersistenceStore` -> `LocationLoader` / `IUnitsService`, and hence
@@ -245,13 +258,16 @@ built and human-verified end-to-end**: the pure `SearchHistory` state machine, t
 `LocationLoader` load-coordinator with startup `HydrateAsync`, and the `LocationSearchViewModel` `Recent`
 list in Core (Story #86), plus the MAUI-head wiring — `MauiAppDataPathProvider`, the startup
 `HydrateAsync` dispatch in `App`, and the on-screen Recent list on `LocationSearchPage` (Story #88,
-platform-verified on the Windows head). The remaining domain modules from `PRD.md` (Favourites, launch
-resolver) are not built yet — though **Favourites Seam 1 has landed** (Story #90): the `favourites`
-persistence document seam is proven end-to-end (test-only) and the shared `LocationIdentity` predicate
-(`WeatherPoc2.Core.Weather` — equal non-null `OpenMeteoId` else exact lat/long equality, `Label` never part
-of identity, total/never-throws, also an `IEqualityComparer<Location>` with a deliberately constant hash;
-the single predicate Spec D2 has both Favourites and Search History key on) is in Core ahead of the
-Favourites state machine and wiring. **Units** is wired into the display layer in Core: the two display ViewModels
+platform-verified on the Windows head). **Favourites (Feature 48) is now under way in Core, not yet built
+end-to-end**: **Seam 1 landed** (Story #90) — the `favourites` persistence document seam proven end-to-end
+(test-only) and the shared `LocationIdentity` predicate (`WeatherPoc2.Core.Weather` — equal non-null
+`OpenMeteoId` else exact lat/long equality, `Label` never part of identity, total/never-throws, also an
+`IEqualityComparer<Location>` with a deliberately constant hash; the single predicate Spec D2 has both
+Favourites and Search History key on) — and now the **pure `Favourites` state machine + `MarkResult` enum
+has landed** (Story #91): dedupe + block-on-overflow at five (recency never evicts), `Mark`/`Unmark`/
+`IsFavourite`/`Seed` with a `Changed` event, `Seed` normalising at the persistence trust boundary. Still
+deferred: the Favourites persistence coordinator, the Favourites UI (mark/unmark + the friendly
+`RefusedFull` copy), and the launch resolver. **Units** is wired into the display layer in Core: the two display ViewModels
 format Temperature/Wind Speed through `UnitFormatter` + `IUnitsService` and re-render on a units change
 (Story #81, ADR-0001 — no re-fetch, cannot fail), and `IUnitsService`/`UnitFormatter` are DI-registered in
 `AddWeatherPoc2Core`; the user's `UnitPreferences` persist through the **Persistence Store**
