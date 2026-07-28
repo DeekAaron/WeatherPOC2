@@ -32,11 +32,13 @@ public static class LocationIdentity
             return Same(x, y);
         }
 
-        // Hash on the id when present, else on the coordinate pair — consistent with Same
-        // (equal-by-Same items hash equal; Label is never mixed in).
-        public int GetHashCode(Location obj)
-            => obj.OpenMeteoId is int id
-                ? HashCode.Combine(id)
-                : HashCode.Combine(obj.Latitude, obj.Longitude);
+        // Constant hash, on purpose. Same can equate two Locations on the id path (ignoring
+        // coordinates entirely) OR on the coordinate path (ignoring a present id on one side),
+        // so no field-based hash is consistent with Same across all pairs — hashing on the id
+        // breaks the coordinate path, hashing on the coordinates breaks the id path. A constant
+        // guarantees equal-by-Same items always collide, satisfying the IEqualityComparer
+        // invariant. Collisions degrade a set lookup to a linear Same scan, which is fine:
+        // Favourites and Search History hold at most a handful of entries.
+        public int GetHashCode(Location obj) => 0;
     }
 }

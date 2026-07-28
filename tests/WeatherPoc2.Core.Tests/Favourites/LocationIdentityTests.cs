@@ -65,4 +65,13 @@ public class LocationIdentityTests
         Assert.True(LocationIdentity.Comparer.Equals(a, b));
         Assert.Equal(LocationIdentity.Comparer.GetHashCode(a), LocationIdentity.Comparer.GetHashCode(b));
     }
+
+    [Fact]
+    public void Comparer_gives_equal_hashes_when_one_id_null_one_non_null_and_coordinates_equal()
+    {
+        var a = new Location(51.5, -0.12, "X", 2643743);
+        var b = new Location(51.5, -0.12, "Y", null);
+        Assert.True(LocationIdentity.Comparer.Equals(a, b));    // either id null → coordinate path, equal
+        Assert.Equal(LocationIdentity.Comparer.GetHashCode(a), LocationIdentity.Comparer.GetHashCode(b));
+    }
 }
