@@ -2,9 +2,31 @@
 
 All notable changes to WeatherPOC2 are recorded here. The **why** matters as much as the **what**.
 
-## [Unreleased] - 2026-07-27
+## [Unreleased] - 2026-07-28
 
 ### Added
+- **Search History app-head wiring + on-device platform verification** (Story #88) — the last, HITL slice
+  of Feature 47, completing Search History end-to-end and **human-verified on the Windows head** (the AFK
+  runner is Linux and cannot build/render the MAUI head). Why it was the real unblock: without the host
+  path provider the persistence graph could not resolve, so the app would crash at startup.
+  - **`MauiAppDataPathProvider` + DI registration** — the host `IAppDataPathProvider` returning
+    `FileSystem.Current.AppDataDirectory`, registered in `MauiProgram` **before** `AddWeatherPoc2Core`.
+    Core deliberately leaves this host-supplied; wiring it here is what lets `JsonPersistenceStore` ->
+    `LocationLoader` / `IUnitsService` (and hence `LocationSearchViewModel`) resolve at runtime. This also
+    clears the same blocker for Units (the units service now resolves), though its startup-init call and
+    Settings screen remain deferred.
+  - **Startup Search-History hydration** — `App` injects `ILocationLoader` and dispatches `HydrateAsync()`
+    via `IDispatcher.DispatchAsync`, so the `Seed`/`Changed` continuation that rebuilds the bound `Recent`
+    collection runs on the UI thread. Fire-and-forget; the store read yields for I/O (not a sync UI block,
+    Principle #4) and fails soft (ADR-0003), so it cannot throw.
+  - **Recent list on `LocationSearchPage`** — a Recent (Search History) list below the candidates, each row
+    showing the Location `Label` and tapping through `SelectRecentCommand`, matching the existing
+    candidate-row idiom. A new `CountToBoolConverter` hides the "Recent" header when history is empty (so a
+    fresh install shows just the search box). Bindings only, no code-behind logic (Principle #2).
+  - **Verified on device (Windows head):** empty-history shows just the search box; select → Recent appears;
+    recency order + cap of 4; re-tapping a Recent entry moves it to front with no gateway search; history
+    **persists across a full relaunch** (PRD-32); the app opens on Search with nothing auto-loaded (Feature 8
+    boundary); no regression to the existing search screen.
 - **Search History coordinator wired end-to-end + the Recent list** (Story #86) — the load path now
   runs through a single coordinator that records history, sets the loaded Location, and persists, so
   Search History reflects where the user actually looked (PRD reqs 28/31/32) rather than being an
