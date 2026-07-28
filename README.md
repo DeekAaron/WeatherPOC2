@@ -34,29 +34,38 @@ Early build. Delivered so far:
   Temperature and Wind Speed in the user's chosen Units and **re-renders instantly when the Units change**
   — with no re-fetch and no possibility of failure (ADR-0001) — by retaining the fetched canonical bundle
   and re-formatting it on a units change (Chance of Rain stays a percentage). Core also
-  carries the **`LocationSearchViewModel`** — search, no-match and error handling, and
-  select-a-candidate -> mint a `Location` -> set the shared loaded-Location holder -> navigate — over
-  two small MAUI-free seams it introduces: `ILoadedLocation` (an in-memory holder of the one currently
-  loaded Location, no persistence yet) and `INavigator` (a navigation abstraction the app head
-  implements over Shell). The OS-agnostic `AddWeatherPoc2Core` DI extension wires the whole graph up
-  (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway, the pure stateless
-  singletons mapper and `HourlyWindow`, singleton `ILoadedLocation`, and the `WeatherViewModel`
-  coordinator plus its two display-only children and the `LocationSearchViewModel` as transients).
-- **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that calls
-  `AddWeatherPoc2Core`, supplies the `INavigator` Shell implementation (`MauiNavigator`), and registers
-  the pages + shell, and an `AppShell` that routes between a **Location Search** screen (the launch
-  default — with nothing loaded the app opens on Search) and the Current Conditions page that fetches
-  the currently loaded Location's conditions on appearing (fetch-on-load is the only refresh trigger for
-  now), carries an always-available magnifying-glass toolbar action back to Search, and renders the
-  Layout C panel plus the horizontal Hourly Forecast strip — a weather icon, condition text and
-  temperature header above stacked chance-of-rain and wind-speed rows — or a friendly error, via
-  MVVM bindings. (The page's original fetch-on-launch wiring binds `LoadCommand`/`ErrorMessage`/
-  `IsLoading`, which the now display-only ViewModel no longer exposes as of Story #71; it is rewired to
-  the shared-fetch `WeatherViewModel` coordinator in a later story. This desktop head is not built on
-  the AFK runner.) The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/`
-  (one per `WeatherIconKeys` member, registered as `MauiImage` and rasterized to `{key}.png` at
-  build), so the mapper's icon key resolves to a bundled asset at runtime. Targets Mac Catalyst
-  always, with the Windows head built only on a Windows host.
+  carries the **`LocationSearchViewModel`** — search, no-match and error handling, and (as of Story #86)
+  both selecting a candidate and tapping a **Recent** entry load through a single load coordinator and then
+  navigate; the view-model exposes a `Recent` list mirroring the Search History and detaches its history
+  subscription on dispose. It sits over three small MAUI-free seams: `ILoadedLocation` (an in-memory holder
+  of the one currently loaded Location), `INavigator` (a navigation abstraction the app head implements over
+  Shell), and the new **Search History** pair — `SearchHistory` (a pure in-memory state machine over the
+  four most-recently-loaded Locations: de-dupe by identity, move-to-front, cap four) and `ILocationLoader`/
+  `LocationLoader`, the single load choke point every load passes through (record to history -> set the
+  loaded-Location holder -> persist, in that order), which also hydrates the history from the
+  `search-history` document at startup. The OS-agnostic `AddWeatherPoc2Core` DI extension wires the whole
+  graph up (named `HttpClient` with a 15 s timeout and 1 MB response cap, singleton gateway, the pure
+  stateless singletons mapper and `HourlyWindow`, singletons `ILoadedLocation`, `SearchHistory`, and
+  `ILocationLoader`, and the `WeatherViewModel` coordinator plus its two display-only children and the
+  `LocationSearchViewModel` as transients).
+- **`WeatherPoc2.App`** — the thin .NET MAUI app head: a `MauiProgram` DI host that supplies the
+  host-only `IAppDataPathProvider` (`MauiAppDataPathProvider`, returning `FileSystem.AppDataDirectory`)
+  **before** calling `AddWeatherPoc2Core` — so the persistence graph (the JSON store, the load
+  coordinator, the units service) resolves at runtime — supplies the `INavigator` Shell implementation
+  (`MauiNavigator`), and registers the pages + shell; an `App` that on startup dispatches the Search
+  History hydration (`ILocationLoader.HydrateAsync`) onto the UI thread (fire-and-forget, fails soft);
+  and an `AppShell` that routes between a **Location Search** screen (the launch default — with nothing
+  loaded the app opens on Search) and the Current Conditions page that fetches the currently loaded
+  Location's conditions on appearing (fetch-on-load is the only refresh trigger for now), carries an
+  always-available magnifying-glass toolbar action back to Search, and renders the Layout C panel plus
+  the horizontal Hourly Forecast strip — a weather icon, condition text and temperature header above
+  stacked chance-of-rain and wind-speed rows — or a friendly error, via MVVM bindings. The Search screen
+  shows a **Recent** list below the candidates (the Search History; its header hides when history is
+  empty). The 15 weather-condition icons ship as self-authored SVGs under `Resources/Images/` (one per
+  `WeatherIconKeys` member, registered as `MauiImage` and rasterized to `{key}.png` at build), so the
+  mapper's icon key resolves to a bundled asset at runtime. The Windows head is **human-verified on
+  device** for the Search History feature (Story #88). Targets Mac Catalyst always, with the Windows head
+  built only on a Windows host.
 - **Weather Condition Mapper** — a pure, deterministic Core component (`WeatherConditionMapper`)
   that collapses Open-Meteo's numeric WMO weather codes (plus the `is_day` flag) onto the app's
   curated `WeatherCondition` set, each carrying a human display name and a day/night icon-asset key
@@ -94,9 +103,10 @@ Early build. Delivered so far:
   (`18°C`, `12 km/h`, rendered with `InvariantCulture`). These are now consumed: the two display
   ViewModels format through `UnitFormatter` + the shared `IUnitsService` and re-render on a units change
   (no re-fetch, ADR-0001), and `IUnitsService`/`UnitFormatter` are DI-registered in `AddWeatherPoc2Core`.
-  The user's `UnitPreferences` persist across restart through the Persistence Store (below). What remains
-  is the MAUI head supplying the app-data path provider and initialising the units service at startup, plus
-  the on-screen Settings/Units screen View — deferred to the platform-verification story.
+  The user's `UnitPreferences` persist across restart through the Persistence Store (below). The MAUI head
+  now supplies the app-data path provider (Story #88), so the units service resolves at runtime; what
+  remains is the head calling the units service's startup initialise and the on-screen Settings/Units
+  screen View — still deferred.
 - **Persistence store** — the durable-state seam (`WeatherPoc2.Core.Persistence`, per ADR-0003):
   `IPersistenceStore` (`LoadAsync<T>(key)` / `SaveAsync<T>(key, value)`) backed by
   `JsonPersistenceStore`, one `System.Text.Json` document per key under an injected
@@ -105,14 +115,16 @@ Early build. Delivered so far:
   Warning, never crashing the view); writes are atomic and serialized per key, and a key that contains
   a separator, `..`, or an absolute path is rejected before any file access. The seam is now
   DI-registered in `AddWeatherPoc2Core` and consumed (the units service persists `UnitPreferences`
-  through it); the only remaining gap is the MAUI-head `IAppDataPathProvider` implementation, which
-  `AddWeatherPoc2Core` deliberately leaves host-supplied and arrives with the platform-verification story.
+  through it); the MAUI-head `IAppDataPathProvider` implementation (`MauiAppDataPathProvider`) that
+  `AddWeatherPoc2Core` deliberately leaves host-supplied is now wired in `MauiProgram` (Story #88), so
+  the store resolves and writes under `FileSystem.AppDataDirectory` on device.
 
-The remaining domain modules (Search History, Favourites, launch resolver) are
-not built yet. The desktop build/launch proof is owned by a
-follow-on platform-verification story. The automated suite is Core Tier-1 recorded-replay plus a
-single trait-gated Tier-2 live drift-guard test (`LiveOpenMeteoTests`) that runs only on the
-scheduled path, never per-commit.
+**Search History is now built and human-verified end-to-end** — the Core state machine, load coordinator,
+startup hydration and the search view-model's Recent list, plus the MAUI-head wiring (path provider,
+startup hydration dispatch, and the on-screen Recent list), confirmed on the Windows head in Story #88's
+platform verification. The remaining domain modules (Favourites, launch resolver) are not built yet. The
+automated suite is Core Tier-1 recorded-replay plus a single trait-gated Tier-2 live drift-guard test
+(`LiveOpenMeteoTests`) that runs only on the scheduled path, never per-commit.
 
 ## Build and test
 

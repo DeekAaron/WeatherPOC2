@@ -2,7 +2,85 @@
 
 All notable changes to WeatherPOC2 are recorded here. The **why** matters as much as the **what**.
 
-## [Unreleased] - 2026-07-27
+## [Unreleased] - 2026-07-28
+
+### Added
+- **Search History app-head wiring + on-device platform verification** (Story #88) — the last, HITL slice
+  of Feature 47, completing Search History end-to-end and **human-verified on the Windows head** (the AFK
+  runner is Linux and cannot build/render the MAUI head). Why it was the real unblock: without the host
+  path provider the persistence graph could not resolve, so the app would crash at startup.
+  - **`MauiAppDataPathProvider` + DI registration** — the host `IAppDataPathProvider` returning
+    `FileSystem.Current.AppDataDirectory`, registered in `MauiProgram` **before** `AddWeatherPoc2Core`.
+    Core deliberately leaves this host-supplied; wiring it here is what lets `JsonPersistenceStore` ->
+    `LocationLoader` / `IUnitsService` (and hence `LocationSearchViewModel`) resolve at runtime. This also
+    clears the same blocker for Units (the units service now resolves), though its startup-init call and
+    Settings screen remain deferred.
+  - **Startup Search-History hydration** — `App` injects `ILocationLoader` and dispatches `HydrateAsync()`
+    via `IDispatcher.DispatchAsync`, so the `Seed`/`Changed` continuation that rebuilds the bound `Recent`
+    collection runs on the UI thread. Fire-and-forget; the store read yields for I/O (not a sync UI block,
+    Principle #4) and fails soft (ADR-0003), so it cannot throw.
+  - **Recent list on `LocationSearchPage`** — a Recent (Search History) list below the candidates, each row
+    showing the Location `Label` and tapping through `SelectRecentCommand`, matching the existing
+    candidate-row idiom. A new `CountToBoolConverter` hides the "Recent" header when history is empty (so a
+    fresh install shows just the search box). Bindings only, no code-behind logic (Principle #2).
+  - **Verified on device (Windows head):** empty-history shows just the search box; select → Recent appears;
+    recency order + cap of 4; re-tapping a Recent entry moves it to front with no gateway search; history
+    **persists across a full relaunch** (PRD-32); the app opens on Search with nothing auto-loaded (Feature 8
+    boundary); no regression to the existing search screen.
+- **Search History coordinator wired end-to-end + the Recent list** (Story #86) — the load path now
+  runs through a single coordinator that records history, sets the loaded Location, and persists, so
+  Search History reflects where the user actually looked (PRD reqs 28/31/32) rather than being an
+  unwired pure state machine. This is the story that turns the previously-landed `SearchHistory` machine
+  and the proven `search-history` document seam (Story #84) into a working feature in Core.
+  - **New `ILocationLoader` / `LocationLoader`** — the single load choke point every Location load
+    passes through (picking a search candidate today; tapping a Recent entry; opening a Favourite
+    later). `LoadAsync` does **record -> set holder -> persist, in that exact order** — the ordering is
+    the contract: recording raises `SearchHistory.Changed` so the Recent list updates, setting
+    `ILoadedLocation` means the Current Conditions on-appearing fetch reads the just-loaded Location, and
+    persistence happens last. `HydrateAsync` reads the `search-history` document once at startup and
+    `Seed`s the machine. Registered as a **singleton** so every load path and the startup hydration
+    share one instance. The coordinator owns the persistence read/write (`IPersistenceStore`) so
+    `SearchHistory` stays pure and I/O-free; because the store fails soft (Warning-logged, never thrown
+    per ADR-0003), a persistence fault can never block the load or the navigation that follows.
+  - **`SearchHistory` + `ILocationLoader` DI-registered** in `AddWeatherPoc2Core` (both singletons),
+    alongside the existing `ILoadedLocation`. Why singleton: the one shared state machine and one load
+    choke point must be the same instances the transient search view-model and the startup hydration
+    all see.
+  - **`LocationSearchViewModel` rewired through the coordinator** — `SelectCandidateCommand` now mints a
+    `Location` and hands it to `ILocationLoader.LoadAsync` instead of setting `ILoadedLocation` itself
+    (the VM no longer touches the holder directly); a new **`SelectRecentCommand`** loads an existing
+    Recent entry the same way (reloading moves it to most-recent, no gateway call); and a new **`Recent`**
+    `ObservableCollection<Location>` mirrors `SearchHistory.Entries` most-recent-first, rebuilt on every
+    `SearchHistory.Changed`.
+  - **Leak fix — `LocationSearchViewModel` is now `IDisposable`** and detaches its `SearchHistory.Changed`
+    subscription on `Dispose`, because the VM is **transient** while `SearchHistory` is a **singleton**: an
+    un-detached handler would root every torn-down search page forever (and rebuild a dead instance's
+    Recent). The handler is held in a field (not a throwaway lambda) so it is removable, and `Dispose` is
+    idempotent — the same pattern as the Story #81 `CurrentConditionsViewModel` units-subscription detach.
+  - Covered by new `LocationLoaderTests` and `SearchHistoryTests`, and expanded
+    `LocationSearchViewModelTests` / `ServiceRegistrationTests` (Tier-1, $0). No new packages.
+- **`search-history` persistence document seam proven end-to-end** (Story #84) — a **test-only** story
+  (no production code added or changed) that pins the durable shape of the Search History document
+  through the merged Feature-5 `JsonPersistenceStore`, with **real file I/O** against a per-test temp
+  directory (e2e Principle 2 — real serializer output written to and re-read from a real file, not a
+  mock both sides agree on). **Why prove it now, ahead of the coordinator:** the store is generic over
+  `<T>`, so nothing in Feature 5 guarantees a `List<Location>` persists in the exact shape Feature 6's
+  hydration will later read — locking the contract (JSON array, most-recent-first, camelCase
+  `latitude`/`longitude`/`label`/`openMeteoId`, nullable `openMeteoId`, fail-soft recovery) as an
+  executable proof means the coordinator story can wire against a seam already known to hold, not an
+  assumed one.
+  - New `SearchHistoryPersistenceTests` (Tier-1, $0, every commit) reusing the Feature-5 temp-dir store
+    harness (`TempAppDataPathProvider` / `FixedPathProvider` / `CapturingLogger`). Asserts: ordered
+    value-equality round-trip (most-recent-first preserved); the document is a JSON array with camelCase
+    properties; a `null` `OpenMeteoId` serializes `"openMeteoId":null` and round-trips back to null; an
+    absent file loads as `null` with **no** log (normal first run); a malformed document loads as `null`
+    with a **Warning** (never thrown); a parseable over-length/duplicate document loads non-null and is
+    normalised by `SearchHistory.Seed` to at most four distinct entries, most-recent-first; and a save
+    failure (base path resolves to an existing file) is caught inside the store and **not** thrown to the
+    caller (Spec D3 / ADR-0003), so a failed persist can never block the load Feature 6 owns.
+  - No new packages (`System.Text.Json` and xUnit already in use). `SearchHistory` (the pure in-memory
+    state machine) and the `JsonPersistenceStore` are both pre-existing; this story only proves the seam
+    between them holds the contract.
 
 ### Changed
 - **Weather displays re-render on a unit change** (Story #81) — the two display-only weather
