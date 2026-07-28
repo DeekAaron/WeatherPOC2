@@ -56,7 +56,7 @@ public sealed class Favourites
     public void Seed(IEnumerable<Location> entries)
     {
         _entries.Clear();
-        foreach (var candidate in entries)
+        foreach (var candidate in entries ?? Enumerable.Empty<Location>())
         {
             if (_entries.Count >= Capacity)
                 break;

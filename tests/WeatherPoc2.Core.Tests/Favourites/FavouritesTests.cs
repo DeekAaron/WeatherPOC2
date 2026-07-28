@@ -122,6 +122,17 @@ public class FavouritesTests
     }
 
     [Fact]
+    public void Seed_is_total_for_a_null_collection()
+    {
+        var f = new WeatherPoc2.Core.Weather.Favourites();
+
+        var ex = Record.Exception(() => f.Seed(null!)); // absent/null favourites document → no crash
+
+        Assert.Null(ex);
+        Assert.Empty(f.Entries);
+    }
+
+    [Fact]
     public void Seed_dedupes_by_identity_even_when_coordinates_are_degenerate()
     {
         var f = new WeatherPoc2.Core.Weather.Favourites();
