@@ -5,6 +5,30 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-28
 
 ### Added
+- **Pure `Favourites` state machine + `MarkResult` enum landed in Core** (Story #91, Feature 48 D3) — the
+  domain heart of Favourites, built pure and I/O-free ahead of the persistence coordinator and UI so the
+  invariant is proven in isolation on the seams (Story #90) it keys on.
+  - **`Favourites`** (`WeatherPoc2.Core.Weather`) — an in-memory state machine over up to five user-curated
+    Locations, most-recently-marked-first, distinct by the shared `LocationIdentity` predicate (`Label`
+    never part of identity). `Mark` inserts at the front, no-ops-with-a-signal when already present, and
+    **refuses at capacity rather than evicting**; `Unmark` removes the identity-equal entry; `IsFavourite`
+    tests membership; a `Changed` event fires only on a real mutation.
+  - **Block-on-overflow, not drop-oldest** — why it differs from Search History: a Favourite is a place the
+    user *pinned*, so recency must never silently evict one. At five, a sixth `Mark` returns
+    `MarkResult.RefusedFull` (the ViewModel will map it to "Favourites are full — remove one first"), never
+    dropping an existing entry. Contrast Search History, which is recency-ordered and *does* evict the
+    oldest at its cap.
+  - **`MarkResult`** enum (`Marked` / `AlreadyFavourite` / `RefusedFull`) — block-on-overflow is an expected
+    domain outcome returned as a value, not an exception (Principle 1); user-facing copy stays in the
+    presentation layer.
+  - **`Seed` normalises at the persistence trust boundary** — total and never-throwing for any input: it
+    drops null elements, dedupes by identity keeping the front-most occurrence, then caps to the first five,
+    so a parseable-but-invalid `favourites` document (duplicates, over-length, null/degenerate entries) can
+    never violate the invariant. Two review fixes hardened this: guarding `Seed` against a null collection,
+    and normalising null elements within the collection.
+  - Persistence (via the Story #90 `favourites` seam) and the mark/unmark UI are deliberately **deferred to
+    later stories** — this story is the pure state machine only. Covered by `FavouritesTests` (Tier-1, $0,
+    every commit).
 - **Favourites persistence document seam proven + shared `LocationIdentity` predicate landed** (Story #90,
   Feature 48 Seam 1) — the Favourites analogue of Story #84's search-history seam proof. This de-risks the
   two contracts every later Favourites story builds on **before** the Favourites state machine or UI is

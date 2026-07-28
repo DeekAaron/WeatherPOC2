@@ -122,7 +122,10 @@ Early build. Delivered so far:
 **Search History is now built and human-verified end-to-end** — the Core state machine, load coordinator,
 startup hydration and the search view-model's Recent list, plus the MAUI-head wiring (path provider,
 startup hydration dispatch, and the on-screen Recent list), confirmed on the Windows head in Story #88's
-platform verification. The remaining domain modules (Favourites, launch resolver) are not built yet. The
+platform verification. Favourites is under way in Core but not yet built end-to-end: the `favourites`
+persistence seam and shared `LocationIdentity` predicate (Story #90) and the pure `Favourites` state
+machine (dedupe + block-on-overflow at five, recency never evicts; Story #91) have landed, with the
+Favourites persistence coordinator, UI, and launch resolver still to come. The
 automated suite is Core Tier-1 recorded-replay plus a single trait-gated Tier-2 live drift-guard test
 (`LiveOpenMeteoTests`) that runs only on the scheduled path, never per-commit.
 
