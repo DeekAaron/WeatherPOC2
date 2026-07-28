@@ -197,9 +197,16 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   every load and `HydrateAsync` reads it back at startup, both DI-registered. As of Story #88 the MAUI-head
   wiring is complete and **human-verified on the Windows head**: `App` dispatches `HydrateAsync` on the UI
   thread at startup and the search page binds the `Recent` list — so Search History is now shipped end-to-end,
-  nothing remains. Favourites extend the same seam with its own key/document later. Covered by
+  nothing remains. The **`favourites` document seam is now proven end-to-end** the same way (Story #90,
+  test-only — no persistence production code): a `List<Location>` round-trips through the same Feature-5
+  store under the new `favourites` key as a camelCase JSON array (`latitude`/`longitude`/`label`/`openMeteoId`,
+  order preserved most-recently-marked-first, nullable `openMeteoId` as `null`) with the same ADR-0003
+  fail-soft recovery (absent → `null` no log; malformed → `null` + Warning; save failure caught +
+  Warning-logged, never thrown) — proving the raw round-trip only; the Favourites domain invariant (dedupe +
+  cap five) is `Favourites.Seed`'s job, landing later. Covered by
   `JsonPersistenceStoreTests` + `JsonPersistenceStoreSecurityTests`, `SearchHistoryPersistenceTests`,
-  `SearchHistoryTests`, and `LocationLoaderTests` (Tier-1, $0, real file I/O against a temp directory).
+  `SearchHistoryTests`, `LocationLoaderTests`, and `JsonPersistenceStoreFavouritesTests` (Tier-1, $0, real
+  file I/O against a temp directory).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — registers the
   host-supplied `IAppDataPathProvider`->`MauiAppDataPathProvider` **before** `AddWeatherPoc2Core` so the
   persistence graph — `JsonPersistenceStore` -> `LocationLoader` / `IUnitsService`, and hence
@@ -239,7 +246,12 @@ built and human-verified end-to-end**: the pure `SearchHistory` state machine, t
 list in Core (Story #86), plus the MAUI-head wiring — `MauiAppDataPathProvider`, the startup
 `HydrateAsync` dispatch in `App`, and the on-screen Recent list on `LocationSearchPage` (Story #88,
 platform-verified on the Windows head). The remaining domain modules from `PRD.md` (Favourites, launch
-resolver) are not built yet. **Units** is wired into the display layer in Core: the two display ViewModels
+resolver) are not built yet — though **Favourites Seam 1 has landed** (Story #90): the `favourites`
+persistence document seam is proven end-to-end (test-only) and the shared `LocationIdentity` predicate
+(`WeatherPoc2.Core.Weather` — equal non-null `OpenMeteoId` else exact lat/long equality, `Label` never part
+of identity, total/never-throws, also an `IEqualityComparer<Location>` with a deliberately constant hash;
+the single predicate Spec D2 has both Favourites and Search History key on) is in Core ahead of the
+Favourites state machine and wiring. **Units** is wired into the display layer in Core: the two display ViewModels
 format Temperature/Wind Speed through `UnitFormatter` + `IUnitsService` and re-render on a units change
 (Story #81, ADR-0001 — no re-fetch, cannot fail), and `IUnitsService`/`UnitFormatter` are DI-registered in
 `AddWeatherPoc2Core`; the user's `UnitPreferences` persist through the **Persistence Store**

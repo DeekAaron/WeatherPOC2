@@ -5,6 +5,30 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-28
 
 ### Added
+- **Favourites persistence document seam proven + shared `LocationIdentity` predicate landed** (Story #90,
+  Feature 48 Seam 1) — the Favourites analogue of Story #84's search-history seam proof. This de-risks the
+  two contracts every later Favourites story builds on **before** the Favourites state machine or UI is
+  written, so those stories extend a proven seam rather than assuming one.
+  - **`favourites` document seam proven end-to-end with real file I/O** (test-only, no persistence
+    production code) — a `List<Location>` round-trips through the existing Feature-5 `JsonPersistenceStore`
+    under the new `favourites` key against a per-test temp directory: camelCase JSON array
+    (`latitude`/`longitude`/`label`/`openMeteoId`), order preserved (most-recently-marked-first), nullable
+    `openMeteoId` round-tripping as `null`, and the ADR-0003 fail-soft/fail-visible recovery (absent file →
+    `null` no log; malformed → `null` + Warning; save failure caught, Warning-logged, never thrown). Why
+    real-IO not a mock-both-sides test: the seam's defects (serializer casing, atomic write, directory
+    creation) live at the file boundary, per the testing standard. Proves the raw round-trip only — the
+    Favourites domain invariant (dedupe + cap five) is `Favourites.Seed`'s job, landing later.
+  - **New `LocationIdentity`** (`WeatherPoc2.Core.Weather`) — the single shared predicate for "same resolved
+    place": equal non-null `OpenMeteoId`s are the same, else exact latitude/longitude equality; `Label` is
+    never part of identity. Total over all pairs (never throws) and exposed both as `Same(a, b)` and as an
+    `IEqualityComparer<Location>` for dedup. The comparer hashes a **constant on purpose** — `Same` can
+    equate on the id path (ignoring coordinates) or the coordinate path (ignoring a present id on one side),
+    so no field-based hash is consistent with `Same` across all pairs; a constant guarantees equal items
+    collide, and the linear `Same` scan it degrades to is fine at Favourites/Search-History scale (a handful
+    of entries). This is the one predicate the Spec (D2) has both Favourites and Search History key on,
+    landed here as pure Core code ahead of the wiring that will consume it.
+  - Covered by new `JsonPersistenceStoreFavouritesTests` and `LocationIdentityTests` (Tier-1, $0, every
+    commit).
 - **Search History app-head wiring + on-device platform verification** (Story #88) — the last, HITL slice
   of Feature 47, completing Search History end-to-end and **human-verified on the Windows head** (the AFK
   runner is Linux and cannot build/render the MAUI head). Why it was the real unblock: without the host
