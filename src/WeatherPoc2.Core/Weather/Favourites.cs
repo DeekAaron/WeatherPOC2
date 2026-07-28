@@ -58,6 +58,8 @@ public sealed class Favourites
         _entries.Clear();
         foreach (var candidate in entries ?? Enumerable.Empty<Location>())
         {
+            if (candidate is null)
+                continue;                       // a null element is not a valid Location → drop it
             if (_entries.Count >= Capacity)
                 break;
             if (!_entries.Any(e => LocationIdentity.Same(e, candidate)))

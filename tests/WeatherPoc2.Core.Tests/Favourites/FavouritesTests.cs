@@ -133,6 +133,22 @@ public class FavouritesTests
     }
 
     [Fact]
+    public void Seed_normalises_away_null_elements_without_throwing()
+    {
+        var f = new WeatherPoc2.Core.Weather.Favourites();
+        // A parseable favourites.json array carrying null element(s): [null], [null, valid], [null, null, valid].
+        // Each null is not a valid Location and must be dropped, never stored (else a later
+        // Mark/IsFavourite/dedupe dereferences it) and never thrown out of Seed (persistence trust boundary).
+        var hostile = new List<Location?> { null, Loc(1), null, null };
+
+        var ex = Record.Exception(() => f.Seed(hostile!)); // fail-closed: totally, never throws
+
+        Assert.Null(ex);
+        Assert.DoesNotContain(f.Entries, e => e is null);   // nulls normalised away
+        Assert.Equal(new int?[] { 1 }, f.Entries.Select(e => e.OpenMeteoId)); // only the valid entry survives
+    }
+
+    [Fact]
     public void Seed_dedupes_by_identity_even_when_coordinates_are_degenerate()
     {
         var f = new WeatherPoc2.Core.Weather.Favourites();
