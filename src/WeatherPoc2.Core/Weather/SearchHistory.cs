@@ -52,10 +52,9 @@ public sealed class SearchHistory
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>The single definition of Location identity (Spec D2): Open-Meteo id when both present,
-    /// else exact coordinates; Label is never part of identity.</summary>
-    private static bool SameLocation(Location a, Location b) =>
-        a.OpenMeteoId is int ida && b.OpenMeteoId is int idb
-            ? ida == idb
-            : a.Latitude == b.Latitude && a.Longitude == b.Longitude;
+    /// <summary>Location identity is the single shared definition (Spec D2): delegate to
+    /// <see cref="LocationIdentity.Same"/> so Favourites and Search History key on one predicate and
+    /// cannot silently drift. Open-Meteo id when both present, else exact coordinates; Label is never
+    /// part of identity.</summary>
+    private static bool SameLocation(Location a, Location b) => LocationIdentity.Same(a, b);
 }
