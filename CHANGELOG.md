@@ -4,6 +4,18 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 
 ## [Unreleased] - 2026-07-29
 
+### Changed
+- **SearchHistory rewired to the shared `LocationIdentity`** (Story #96, Feature 48 D2 / seam-inventory
+  shared-identity clause) — `SearchHistory`'s private `SameLocation(a, b)` predicate now delegates to the
+  shared `LocationIdentity.Same` (landed in Story #90/#91) instead of carrying its own inline copy of the
+  id-else-coordinates rule. Why it matters: Spec D2 requires *exactly one* definition of "same resolved
+  place" so Favourites and Search History cannot silently drift apart — two hand-maintained copies of the
+  rule is precisely the drift the consolidation exists to prevent. The semantics are byte-for-byte #47's
+  original rule (Open-Meteo id when both present, else exact lat/long; `Label` never part of identity), so
+  the existing `SearchHistoryTests` identity cases re-run unchanged as the regression — no behaviour change,
+  a pure DRY consolidation. Internal refactor only: `SameLocation` stays private and no public contract,
+  dependency, or persisted shape moved.
+
 ### Added
 - **DI-registration tests locking the Favourites singletons** (Story #95, Feature 48 D5, test-only) —
   `ServiceRegistrationTests` now covers the Favourites registrations in `AddWeatherPoc2Core`:

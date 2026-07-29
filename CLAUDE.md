@@ -164,8 +164,10 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   **`INavigator`** (`GoToCurrentConditionsAsync`/`GoToSearchAsync`, implemented by the app head over
   Shell), and (Story #86) the **Search History** pair: **`SearchHistory`** — the pure in-memory state
   machine over the four most-recently-*loaded* Locations (dedupe-by-identity -> move-to-front -> cap 4,
-  keyed by Open-Meteo id else coordinates, `Label` never part of identity; `Record` for a load, `Seed` to
-  hydrate/normalise a stored list, `Changed` raised on any mutation) — and **`ILocationLoader`**/`LocationLoader`
+  keyed by Open-Meteo id else coordinates, `Label` never part of identity — as of Story #96 its private
+  `SameLocation` predicate delegates to the shared `LocationIdentity.Same`, so there is exactly one identity
+  definition Search History and Favourites both key on, with byte-for-byte the same #47 semantics; `Record`
+  for a load, `Seed` to hydrate/normalise a stored list, `Changed` raised on any mutation) — and **`ILocationLoader`**/`LocationLoader`
   — the single load choke point every load passes through (`LoadAsync`: record -> set holder -> persist,
   in that order; `HydrateAsync`: read the `search-history` document once at startup and `Seed` the machine),
   a singleton owning the Search History persistence read/write via `IPersistenceStore` so the pure state
@@ -284,7 +286,9 @@ end-to-end**: **Seam 1 landed** (Story #90) — the `favourites` persistence doc
 (test-only) and the shared `LocationIdentity` predicate (`WeatherPoc2.Core.Weather` — equal non-null
 `OpenMeteoId` else exact lat/long equality, `Label` never part of identity, total/never-throws, also an
 `IEqualityComparer<Location>` with a deliberately constant hash; the single predicate Spec D2 has both
-Favourites and Search History key on) — the **pure `Favourites` state machine + `MarkResult` enum landed**
+Favourites and Search History key on — and as of Story #96 `SearchHistory` actually delegates to it, so the
+"one identity definition" is now real rather than aspirational and the two machines cannot silently drift) —
+the **pure `Favourites` state machine + `MarkResult` enum landed**
 (Story #91): dedupe + block-on-overflow at five (recency never evicts), `Mark`/`Unmark`/`IsFavourite`/`Seed`
 with a `Changed` event, `Seed` normalising at the persistence trust boundary; and now the **`IFavouritesService`/
 `FavouritesService` persistence coordinator + the open-a-favourite path on `LocationSearchViewModel` have
