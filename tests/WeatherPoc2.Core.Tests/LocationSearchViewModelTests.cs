@@ -13,14 +13,31 @@ public class LocationSearchViewModelTests
     private static SearchCandidate LondonGb =>
         new(2643743, "London", "England", "United Kingdom", 51.50853, -0.12574);
 
-    // The VM now takes the loader + history instead of setting ILoadedLocation itself (Spec D1/D4).
+    // The VM takes the loader + history instead of setting ILoadedLocation itself (Spec D1/D4), plus the
+    // IFavouritesService for the Favourites list (Feature 7, #48 D5). All args default so a test names only
+    // what it exercises; a self-made IFavouritesService gets an empty Entries so the ctor's RebuildFavourites
+    // has a non-null list to iterate.
     private static LocationSearchViewModel VmWith(
-        IWeatherGateway gateway,
-        ILocationLoader loader,
-        SearchHistory history,
-        INavigator navigator,
+        IWeatherGateway? gateway = null,
+        ILocationLoader? loader = null,
+        SearchHistory? history = null,
+        INavigator? navigator = null,
+        IFavouritesService? favourites = null,
         ILogger<LocationSearchViewModel>? logger = null)
-        => new(gateway, loader, history, navigator, logger ?? NullLogger<LocationSearchViewModel>.Instance);
+    {
+        if (favourites is null)
+        {
+            favourites = Substitute.For<IFavouritesService>();
+            favourites.Entries.Returns(new List<Location>());
+        }
+        return new(
+            gateway ?? Substitute.For<IWeatherGateway>(),
+            loader ?? Substitute.For<ILocationLoader>(),
+            history ?? new SearchHistory(),
+            navigator ?? Substitute.For<INavigator>(),
+            favourites,
+            logger ?? NullLogger<LocationSearchViewModel>.Instance);
+    }
 
     [Fact]
     public async Task Search_populates_candidates_and_clears_messages_on_hits()
@@ -172,13 +189,65 @@ public class LocationSearchViewModelTests
         const string lon = "98.7654321";
         var spy = new CapturingLogger();
         var loader = Substitute.For<ILocationLoader>();
-        var vm = VmWith(Substitute.For<IWeatherGateway>(), loader, new SearchHistory(), Substitute.For<INavigator>(), spy);
+        var vm = VmWith(Substitute.For<IWeatherGateway>(), loader, new SearchHistory(), Substitute.For<INavigator>(), logger: spy);
 
         var candidate = new SearchCandidate(2643743, "London", "England", "United Kingdom", 12.3456789, 98.7654321);
         await vm.SelectCandidateCommand.ExecuteAsync(candidate);
         await vm.SelectRecentCommand.ExecuteAsync(new Location(12.3456789, 98.7654321, "London, England, United Kingdom", 2643743));
 
         Assert.DoesNotContain(spy.Messages, m => m.Contains(lat) || m.Contains(lon));
+    }
+
+    [Fact]
+    public async Task OpenFavourite_loads_via_the_location_loader_then_navigates()
+    {
+        var loader = Substitute.For<ILocationLoader>();
+        var navigator = Substitute.For<INavigator>();
+        var vm = VmWith(Substitute.For<IWeatherGateway>(), loader, new SearchHistory(), navigator);
+        var fav = new Location(51.5, -0.12, "London, GB", 2643743);
+
+        await vm.OpenFavouriteCommand.ExecuteAsync(fav);
+
+        // Opening a Favourite reuses Feature 6's single load choke point (records history + sets holder +
+        // persists), THEN navigates — behaviourally identical to tapping a Recent entry (Spec D1).
+        Received.InOrder(() =>
+        {
+            loader.LoadAsync(fav, Arg.Any<CancellationToken>());
+            navigator.GoToCurrentConditionsAsync();
+        });
+    }
+
+    [Fact]
+    public void Favourites_collection_is_empty_when_the_service_has_no_entries_and_rebuilds_on_changed()
+    {
+        var favourites = Substitute.For<IFavouritesService>();
+        favourites.Entries.Returns(new List<Location>());
+        var vm = VmWith(favourites: favourites);
+
+        Assert.Empty(vm.Favourites); // empty Favourites -> empty collection (no list section)
+
+        favourites.Entries.Returns(new List<Location>
+        {
+            new(51.5, -0.12, "London, GB", 2643743),
+            new(48.85, 2.35, "Paris, FR", 2988507),
+        });
+        favourites.Changed += Raise.Event<EventHandler>(favourites, EventArgs.Empty);
+
+        Assert.Equal(new[] { "London, GB", "Paris, FR" }, vm.Favourites.Select(l => l.Label));
+    }
+
+    [Fact]
+    public async Task OpenFavourite_does_not_call_the_gateway()
+    {
+        // The load path never re-searches Open-Meteo, and (by construction) the VM holds no
+        // ILoadedLocation — the loader owns the holder, so the VM cannot set it directly (Spec D1).
+        var gateway = Substitute.For<IWeatherGateway>();
+        var vm = VmWith(gateway, Substitute.For<ILocationLoader>(), new SearchHistory(), Substitute.For<INavigator>());
+
+        await vm.OpenFavouriteCommand.ExecuteAsync(new Location(51.5, -0.12, "London, GB", 2643743));
+
+        await gateway.DidNotReceive().GetWeatherAsync(Arg.Any<Location>(), Arg.Any<CancellationToken>());
+        await gateway.DidNotReceive().SearchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -197,6 +266,29 @@ public class LocationSearchViewModelTests
         history.Record(new Location(0, 0, "b", 2));
 
         Assert.Equal(new[] { "a" }, vm.Recent.Select(l => l.Label).ToArray());
+    }
+
+    [Fact]
+    public void Dispose_detaches_the_favourites_changed_subscription_so_favourites_no_longer_rebuilds()
+    {
+        var favourites = Substitute.For<IFavouritesService>();
+        favourites.Entries.Returns(new List<Location> { new(51.5, -0.12, "London, GB", 2643743) });
+        var vm = VmWith(favourites: favourites);
+
+        Assert.Equal(new[] { "London, GB" }, vm.Favourites.Select(l => l.Label).ToArray());
+
+        vm.Dispose();
+
+        // After Dispose the singleton service no longer roots this transient VM: a later Changed raise
+        // must NOT rebuild the disposed VM's Favourites collection.
+        favourites.Entries.Returns(new List<Location>
+        {
+            new(51.5, -0.12, "London, GB", 2643743),
+            new(48.85, 2.35, "Paris, FR", 2988507),
+        });
+        favourites.Changed += Raise.Event<EventHandler>(favourites, EventArgs.Empty);
+
+        Assert.Equal(new[] { "London, GB" }, vm.Favourites.Select(l => l.Label).ToArray());
     }
 
     [Fact]
