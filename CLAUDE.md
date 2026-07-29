@@ -86,12 +86,16 @@ Built so far:
   singleton `IUnitsService.Changed` on page teardown; the coordinator holds no subscription itself); the
   **`LocationSearchViewModel`** (search / no-match / error, and — as of Story #86 — both select-a-candidate
   and tap-a-Recent-entry load through the single `ILocationLoader` coordinator (record -> set holder ->
-  persist) then navigate, exposing a `Recent` list that mirrors `SearchHistory`, and is `IDisposable` to
-  detach its `SearchHistory.Changed` subscription); and the `AddWeatherPoc2Core` DI extension
+  persist) then navigate, exposing a `Recent` list that mirrors `SearchHistory`; as of Story #94 it also
+  takes `IFavouritesService`, exposes a `Favourites` list mirroring it, and an `OpenFavouriteCommand` that
+  loads through the same `ILocationLoader` choke point — behaviourally identical to tapping a Recent entry —
+  and is `IDisposable` to detach both its `SearchHistory.Changed` and `IFavouritesService.Changed`
+  subscriptions); and the `AddWeatherPoc2Core` DI extension
   (`ServiceCollectionExtensions` — named `HttpClient` with a 15 s timeout / 1 MB response cap, singleton
   `IWeatherGateway`, the pure stateless singletons `WeatherConditionMapper` and `HourlyWindow`, singleton
   `ILoadedLocation`->`LoadedLocation`, singleton `SearchHistory` + `ILocationLoader`->`LocationLoader` (the
-  single load choke point), and the `WeatherViewModel` coordinator + both display-only children +
+  single load choke point), singleton `Favourites` + `IFavouritesService`->`FavouritesService` (Story #94),
+  and the `WeatherViewModel` coordinator + both display-only children +
   `LocationSearchViewModel` as transients; `INavigator` is supplied by the MAUI head). Tested by the
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
@@ -144,9 +148,16 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   that mints a `Location` and a `SelectRecentCommand` that takes an existing one, both loading through the
   single `ILocationLoader` coordinator (the VM no longer sets `ILoadedLocation` itself) then navigating,
   plus a `Recent` `ObservableCollection<Location>` mirroring `SearchHistory.Entries` most-recent-first and
-  rebuilt on every `SearchHistory.Changed`; the VM is `IDisposable` to detach that subscription — it is
-  transient while `SearchHistory` is a singleton, so an un-detached handler would root every dead page,
-  mirroring the Story #81 `CurrentConditionsViewModel` pattern), plus the MAUI-free seams it sits over —
+  rebuilt on every `SearchHistory.Changed`; and — as of Story #94 — a third load path, an
+  `OpenFavouriteCommand` that takes an existing Location and loads it through the same `ILocationLoader`
+  coordinator then navigates (never touching `ILoadedLocation` and never calling the gateway; the opened
+  Favourite becomes the most-recent Search History entry for free, PRD-40), plus a `Favourites`
+  `ObservableCollection<Location>` mirroring `IFavouritesService.Entries` most-recently-marked-first and
+  rebuilt on every `IFavouritesService.Changed` (empty when there are no Favourites, so the page renders no
+  list section); the VM is `IDisposable` to detach **both** the `SearchHistory.Changed` and the
+  `IFavouritesService.Changed` subscriptions — it is transient while both are singletons, so an un-detached
+  handler would root every dead page, mirroring the Story #81 `CurrentConditionsViewModel` pattern), plus
+  the MAUI-free seams it sits over —
   **`ILoadedLocation`**/`LoadedLocation` (in-memory holder of the one loaded Location, no persistence),
   **`INavigator`** (`GoToCurrentConditionsAsync`/`GoToSearchAsync`, implemented by the app head over
   Shell), and (Story #86) the **Search History** pair: **`SearchHistory`** — the pure in-memory state
@@ -217,9 +228,17 @@ Core also carries the first pure slices of the **Hourly Forecast** — `HourlyFo
   event fires only on a real mutation (never on a no-op). `Seed` **normalises rather than trusts** at the
   persistence trust boundary — total/never-throws for any input, dropping null elements, deduping by
   identity keeping the front-most occurrence, then capping to the first five — so a parseable-but-invalid
-  `favourites` document can never violate the invariant. Pure and I/O-free: persistence (via the proven
-  `favourites` seam) and the friendly `RefusedFull` copy ("Favourites are full — remove one first") are the
-  coordinator's / ViewModel's job, both deferred to later stories. Covered by `FavouritesTests` (Tier-1, $0).
+  `favourites` document can never violate the invariant. Pure and I/O-free: the friendly `RefusedFull` copy
+  ("Favourites are full — remove one first") stays the ViewModel's job (deferred). Persistence is now owned
+  by the **`IFavouritesService`**/`FavouritesService` coordinator (`WeatherPoc2.Core.Weather`, Story #94) —
+  the singleton that wraps the pure machine and its persistence under the `favourites` key via
+  `IPersistenceStore`: `Entries`/`IsFavourite` delegate to the machine, `Changed` forwards the machine's
+  event synchronously (no marshalling — the UI-thread caller owns affinity, mirroring `UnitsService`),
+  `HydrateAsync` reads the document once and `Seed`s (null on absent/malformed -> empty), and
+  `MarkAsync`/`UnmarkAsync` persist **only on a real mutation** (a save failure is logged inside the store,
+  never surfaced, ADR-0003 / Principle 1). The service's own logger emits nothing on the persistence path —
+  no coordinate or `Label` reaches the sink (Story security AC). Covered by `FavouritesTests` and
+  `FavouritesServiceTests` (Tier-1, $0).
 - `WeatherPoc2.App` — the thin .NET MAUI app head: `MauiProgram` (the DI host — registers the
   host-supplied `IAppDataPathProvider`->`MauiAppDataPathProvider` **before** `AddWeatherPoc2Core` so the
   persistence graph — `JsonPersistenceStore` -> `LocationLoader` / `IUnitsService`, and hence
@@ -263,11 +282,16 @@ end-to-end**: **Seam 1 landed** (Story #90) — the `favourites` persistence doc
 (test-only) and the shared `LocationIdentity` predicate (`WeatherPoc2.Core.Weather` — equal non-null
 `OpenMeteoId` else exact lat/long equality, `Label` never part of identity, total/never-throws, also an
 `IEqualityComparer<Location>` with a deliberately constant hash; the single predicate Spec D2 has both
-Favourites and Search History key on) — and now the **pure `Favourites` state machine + `MarkResult` enum
-has landed** (Story #91): dedupe + block-on-overflow at five (recency never evicts), `Mark`/`Unmark`/
-`IsFavourite`/`Seed` with a `Changed` event, `Seed` normalising at the persistence trust boundary. Still
-deferred: the Favourites persistence coordinator, the Favourites UI (mark/unmark + the friendly
-`RefusedFull` copy), and the launch resolver. **Units** is wired into the display layer in Core: the two display ViewModels
+Favourites and Search History key on) — the **pure `Favourites` state machine + `MarkResult` enum landed**
+(Story #91): dedupe + block-on-overflow at five (recency never evicts), `Mark`/`Unmark`/`IsFavourite`/`Seed`
+with a `Changed` event, `Seed` normalising at the persistence trust boundary; and now the **`IFavouritesService`/
+`FavouritesService` persistence coordinator + the open-a-favourite path on `LocationSearchViewModel` have
+landed** (Story #94, Core-only): the coordinator wraps the machine and persists under the `favourites` key
+(persist-only-on-mutation, fail-soft), and the search VM exposes a `Favourites` bound list + an
+`OpenFavouriteCommand` routing through the single `ILocationLoader` choke point. Still deferred: the
+Favourites UI (the mark/unmark star + the friendly `RefusedFull` copy), the app-head wiring (binding the
+`Favourites` list on `LocationSearchPage` and the startup `IFavouritesService.HydrateAsync` dispatch), and
+the launch resolver. **Units** is wired into the display layer in Core: the two display ViewModels
 format Temperature/Wind Speed through `UnitFormatter` + `IUnitsService` and re-render on a units change
 (Story #81, ADR-0001 — no re-fetch, cannot fail), and `IUnitsService`/`UnitFormatter` are DI-registered in
 `AddWeatherPoc2Core`; the user's `UnitPreferences` persist through the **Persistence Store**
