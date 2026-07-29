@@ -2,6 +2,40 @@
 
 All notable changes to WeatherPOC2 are recorded here. The **why** matters as much as the **what**.
 
+## [Unreleased] - 2026-07-29
+
+### Added
+- **Favourites persistence coordinator + open-a-favourite on the search view-model** (Story #94, Feature 48
+  D5/D1, Core-only) — the next slice on top of the pure `Favourites` machine (Story #91), giving Favourites
+  an owner that persists and a way to open one.
+  - **`IFavouritesService` / `FavouritesService`** (`WeatherPoc2.Core.Weather`) — the singleton coordinator
+    that wraps the pure `Favourites` machine and owns its persistence under the `favourites` key via
+    `IPersistenceStore`. `Entries`/`IsFavourite` delegate to the machine; `Changed` forwards the machine's
+    event; `HydrateAsync` reads the document once at startup and `Seed`s (null on absent/malformed → empty);
+    `MarkAsync`/`UnmarkAsync` mutate then **persist only on a real change**. Mirrors `UnitsService` and the
+    Feature 6 load coordinator (Spec D5).
+  - **Persist-only-on-mutation + fail-soft** — a no-op `Mark` (`AlreadyFavourite`/`RefusedFull`) or an absent
+    `Unmark` writes nothing; a genuine change is saved, and a save failure is logged inside the store and
+    never surfaced (ADR-0003 / Principle 1), so persistence can never block or break a mark/unmark.
+  - **Thread-affinity by contract, not marshalling** — `Changed` is forwarded synchronously on the caller's
+    thread; the UI-thread caller owns affinity (a star tap already runs on the UI thread; the startup
+    hydrate raise is marshalled by the App head). Core stays MAUI-free.
+  - **`LocationSearchViewModel` gains a third load path** — takes `IFavouritesService`, exposes a bound
+    `Favourites` `ObservableCollection<Location>` (most-recently-marked-first, empty → no list section) that
+    rebuilds on `IFavouritesService.Changed`, and an `OpenFavouriteCommand` that loads through the single
+    `ILocationLoader` choke point then navigates — behaviourally identical to tapping a Recent entry, so an
+    opened Favourite becomes the most-recent Search History entry for free (PRD-40). The command never
+    touches the loaded-location holder and never calls the gateway. `Dispose` now detaches both the
+    `SearchHistory.Changed` and the new `IFavouritesService.Changed` handlers (transient VM over singleton
+    services — an un-detached handler would root every dead page, the Story #81 pattern).
+  - **Security** — the service's own logger emits nothing on the persistence path (no coordinate or `Label`
+    reaches the sink); write-failure logging is the store's job and carries the key + exception type only,
+    mirroring the Gateway's coordinate-logging control.
+  - DI: `Favourites` + `IFavouritesService`→`FavouritesService` registered as singletons in
+    `AddWeatherPoc2Core`. Still deferred: the mark/unmark UI + `RefusedFull` copy, the app-head wiring
+    (binding the `Favourites` list and the startup `HydrateAsync` dispatch), and the launch resolver.
+    Covered by `FavouritesServiceTests` and extended `LocationSearchViewModelTests` (Tier-1, $0).
+
 ## [Unreleased] - 2026-07-28
 
 ### Added
