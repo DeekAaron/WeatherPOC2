@@ -5,6 +5,16 @@ All notable changes to WeatherPOC2 are recorded here. The **why** matters as muc
 ## [Unreleased] - 2026-07-29
 
 ### Added
+- **DI-registration tests locking the Favourites singletons** (Story #95, Feature 48 D5, test-only) —
+  `ServiceRegistrationTests` now covers the Favourites registrations in `AddWeatherPoc2Core`:
+  `IFavouritesService` resolves twice to the same `FavouritesService` instance, and the pure `Favourites`
+  state machine is a shared singleton. Why it matters: the star (`WeatherViewModel`) and the list
+  (`LocationSearchViewModel`) must share **one** Favourites owner — if either the service or the machine
+  were transient, a mark from the star wouldn't show up in the list (and vice versa). The registrations
+  themselves landed ahead of this story (#93, as a resolution dependency for the star toggle); this story
+  owns and locks them behind tests. RED was observed by temporarily removing the two registrations (the new
+  tests plus the two dependent VM resolutions failed), then restored to GREEN. Full Tier-1 suite green
+  (274 passed).
 - **Favourites persistence coordinator + open-a-favourite on the search view-model** (Story #94, Feature 48
   D5/D1, Core-only) — the next slice on top of the pure `Favourites` machine (Story #91), giving Favourites
   an owner that persists and a way to open one.
