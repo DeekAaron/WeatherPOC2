@@ -94,8 +94,10 @@ Built so far:
   (`ServiceCollectionExtensions` — named `HttpClient` with a 15 s timeout / 1 MB response cap, singleton
   `IWeatherGateway`, the pure stateless singletons `WeatherConditionMapper` and `HourlyWindow`, singleton
   `ILoadedLocation`->`LoadedLocation`, singleton `SearchHistory` + `ILocationLoader`->`LocationLoader` (the
-  single load choke point), singleton `Favourites` + `IFavouritesService`->`FavouritesService` (Story #94),
-  and the `WeatherViewModel` coordinator + both display-only children +
+  single load choke point), singleton `Favourites` + `IFavouritesService`->`FavouritesService` (Story #94,
+  both singletons locked behind `ServiceRegistrationTests` as of Story #95 — `IFavouritesService` resolves
+  twice to the same `FavouritesService`, and the pure `Favourites` machine is a shared singleton so the star
+  and the list share one owner), and the `WeatherViewModel` coordinator + both display-only children +
   `LocationSearchViewModel` as transients; `INavigator` is supplied by the MAUI head). Tested by the
   xUnit project `WeatherPoc2.Core.Tests`, which also carries `LiveOpenMeteoTests` — the trait-gated
   (`[Trait("Tier","2-Live")]`) Tier-2 live drift guard that makes one real Open-Meteo call for London
