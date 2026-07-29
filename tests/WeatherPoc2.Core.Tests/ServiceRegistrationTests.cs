@@ -76,6 +76,28 @@ public class ServiceRegistrationTests
     }
 
     [Fact]
+    public void FavouritesService_resolves_as_IFavouritesService_singleton()
+    {
+        // The star (WeatherViewModel) and the list (LocationSearchViewModel) must share ONE
+        // Favourites owner — two resolutions of IFavouritesService are the same FavouritesService.
+        using var provider = BuildProvider();
+        var a = provider.GetRequiredService<IFavouritesService>();
+        var b = provider.GetRequiredService<IFavouritesService>();
+        Assert.Same(a, b);
+        Assert.IsType<FavouritesService>(a);
+    }
+
+    [Fact]
+    public void Favourites_is_registered_as_a_singleton()
+    {
+        // The pure Favourites state machine is shared: FavouritesService wraps the one instance.
+        using var provider = BuildProvider();
+        var a = provider.GetRequiredService<WeatherPoc2.Core.Weather.Favourites>();
+        var b = provider.GetRequiredService<WeatherPoc2.Core.Weather.Favourites>();
+        Assert.Same(a, b);
+    }
+
+    [Fact]
     public void AddWeatherPoc2Core_registers_the_weather_condition_mapper()
     {
         // Preserved from Feature 2: the mapper stays registered and injected into CurrentConditionsViewModel.
